@@ -689,6 +689,21 @@
         q: 2
       })
     },
+    thunder: at => {
+      noise(at, 1.8, {
+        freq: 320,
+        to: 60,
+        vol: .8,
+        filter: 'lowpass',
+        attack: .02
+      });
+      noise(at + .15, 1.3, {
+        freq: 140,
+        vol: .55,
+        filter: 'lowpass',
+        attack: .1
+      })
+    },
     unlock: at => {
       arp([523, 659, 784, 1047], at, .11, {
         dur: .5,
@@ -1486,97 +1501,391 @@
 
   let hudKey = '';
 
-  function updateHud() {
-    const walking = marketMode || aquariumMode,
-      night = isNight(),
-      key = `${walking}|${night}|${combo}`;
-    if (key === hudKey) return;
-    hudKey = key;
-    sceneEl.classList.toggle('walking', walking);
-    if (!walking) {
-      marketKeys.w = marketKeys.a = marketKeys.s = marketKeys.d = false;
-      document.querySelectorAll('#dpad .on').forEach(b => b.classList.remove('on'))
-    }
-    $('#phase').textContent = night ? '🌙 夜晚' : '☀️ 白天';
-    $('#comboPill').textContent = `🔥 连击 ${combo}`;
-    renderLurePick()
+  // ---------- 场景：昼夜、天气、钓点 ----------
+  // 世界层单独画在离屏画布上，方便整体调暗（夜晚/阴雨），再把灯光叠上去
+  const worldCanvas = document.createElement('canvas');
+  worldCanvas.width = 800;
+  worldCanvas.height = 500;
+  const worldCtx = worldCanvas.getContext('2d');
+  // e：白天图标，ne：夜晚图标；bonus：稀有鱼加成；grey：天空变灰程度；dark：额外变暗；sun/stars：日月星可见度
+  const WEATHERS = {
+    晴朗: {e: '☀️', ne: '🌙', bonus: 0, weight: 4, clouds: 3, grey: 0, dark: 0, sun: 1, stars: 1},
+    多云: {e: '⛅', ne: '☁️', bonus: .02, weight: 3, clouds: 8, grey: .35, dark: .08, sun: .55, stars: .45},
+    小雨: {e: '🌧️', ne: '🌧️', bonus: .06, weight: 2, clouds: 10, grey: .6, dark: .18, sun: .2, stars: 0, rain: 70},
+    雷雨: {e: '⛈️', ne: '⛈️', bonus: .1, weight: 1, clouds: 12, grey: .8, dark: .3, sun: 0, stars: 0, rain: 150, storm: true},
+    大雾: {e: '🌫️', ne: '🌫️', bonus: .04, weight: 1.5, clouds: 4, grey: .5, dark: .06, sun: .35, stars: .15, fog: true}
+  };
+  const LIGHTHOUSE = {x: 735, y: 123},
+    HOUSES = [[262, 28, 20, '#b4574a'], [295, 22, 15, '#7a6a9a'], [322, 32, 24, '#b4574a'], [360, 26, 18, '#5f7f6a'], [391, 28, 20, '#9a6a4a'], [424, 18, 13, '#7a6a9a']],
+    LILIES = [[150, 300, 14, 1], [205, 322, 11, 0], [255, 297, 12, 0], [110, 336, 10, 1], [300, 330, 13, 0], [690, 300, 12, 1], [735, 325, 10, 0]];
+  let sunPos = null,
+    moonPos = null,
+    shipX = 0,
+    lightningAt = 0,
+    flashUntil = 0,
+    bolt = [];
+
+  const hx = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)],
+    lerpC = (a, b, k) => {
+      a = typeof a === 'string' ? hx(a) : a;
+      b = typeof b === 'string' ? hx(b) : b;
+      k = Math.max(0, Math.min(1, k));
+      return a.map((v, i) => v + (b[i] - v) * k)
+    },
+    css = (c, a = 1) => `rgba(${c[0]|0},${c[1]|0},${c[2]|0},${a})`;
+
+  // 0 = 深夜，1 = 白天；黄昏、清晨平滑过渡
+  function dayLight() {
+    const p = t % 120;
+    if (p >= 115) return (p - 115) / 10;
+    if (p < 5) return (p + 5) / 10;
+    if (p >= 75 && p < 85) return 1 - (p - 75) / 10;
+    if (p >= 85) return 0;
+    return 1
   }
 
-  // 一帧游戏逻辑 + 画面；fixedDt 用于后台模拟
-  function frame(now, fixedDt) {
-    if (paused) {
-      last = now;
-      return
-    }
-    const dt = fixedDt ?? Math.min(.05, (now - last) / 1000);
-    last = now;
-    t += dt;
-    updateHud();
-    ctx.clearRect(0, 0, 800, 500);
-    updateWorkers();
-    updateAquarium();
-    updateDerby();
-    drawTank();
-    if (aquariumMode) {
-      drawAquarium(dt);
-      return
-    }
-    if (!tideActive && t >= nextTide) {
-      tideActive = true;
-      tideUntil = t + 13;
-      message('🌊 鱼群狂潮来了！趁现在抛竿或撒网！')
-    }
-    if (tideActive && t >= tideUntil) {
-      tideActive = false;
-      nextTide = t + 35 + Math.random() * 30
-    }
-    updateMarketCustomers(dt);
-    if (marketMode) {
-      drawMarket(dt);
-      return
-    }
-    // sky and distant hills
-    let sky = ctx.createLinearGradient(0, 0, 0, 260);
-    sky.addColorStop(0, '#a9d5d0');
-    sky.addColorStop(1, '#e4e8c8');
-    ctx.fillStyle = sky;
+  function duskness(light) {
+    return light > 0 && light < 1 ? 1 - Math.abs(light - .5) * 2 : 0
+  }
+
+  function phaseName() {
+    const p = t % 120;
+    return isNight() ? '🌙 夜晚' : p >= 68 ? '🌅 黄昏' : p < 12 ? '🌄 清晨' : '☀️ 白天'
+  }
+
+  function glowAt(x, y, r, col, a) {
+    if (a <= 0) return;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r),
+      c = hx(col);
+    g.addColorStop(0, css(c, Math.min(1, a)));
+    g.addColorStop(1, css(c, 0));
+    ctx.fillStyle = g;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2)
+  }
+
+  function drawSky(light, W) {
+    const dusk = duskness(light);
+    let top = lerpC('#0b1533', '#86c5dc', light),
+      bot = lerpC('#25355f', '#e6efd4', light);
+    top = lerpC(top, '#6b5b9a', dusk * .7);
+    bot = lerpC(bot, '#f5a36a', dusk * .85);
+    const grey = W.fog ? '#cfd6d3' : '#8d98a0';
+    top = lerpC(top, lerpC(grey, '#1a2233', 1 - light), W.grey);
+    bot = lerpC(bot, lerpC(grey, '#2a3346', 1 - light), W.grey);
+    const g = ctx.createLinearGradient(0, 0, 0, 300);
+    g.addColorStop(0, css(top));
+    g.addColorStop(1, css(bot));
+    ctx.fillStyle = g;
     ctx.fillRect(0, 0, 800, 500);
-    const night = isNight();
-    ellipse(643, 77, 39, 39, night ? '#e8e7d1' : '#ffe8a1');
-    ctx.fillStyle = '#91b99b';
-    ctx.beginPath();
-    ctx.moveTo(0, 235);
-    for (let x = 0; x <= 800; x += 80) ctx.lineTo(x, 175 + Math.sin(x * .016) * 27);
-    ctx.lineTo(800, 300);
-    ctx.lineTo(0, 300);
-    ctx.fill();
-    ctx.fillStyle = '#719c7d';
-    ctx.beginPath();
-    ctx.moveTo(0, 262);
-    for (let x = 0; x <= 800; x += 60) ctx.lineTo(x, 205 + Math.cos(x * .014) * 25);
-    ctx.lineTo(800, 320);
-    ctx.lineTo(0, 320);
-    ctx.fill();
-    // lake
-    let water = ctx.createLinearGradient(0, 250, 0, 500);
-    water.addColorStop(0, '#66b9bc');
-    water.addColorStop(1, '#438f9e');
-    ctx.fillStyle = water;
-    ctx.fillRect(0, 250, 800, 250);
-    for (let i = 0; i < 19; i++) {
-      const x = ((i * 67 + t * (14 + i % 4) * ((i % 2) ? 1 : -1)) % 920 + 920) % 920 - 60,
-        y = 278 + (i * 37) % 204;
-      ctx.globalAlpha = .14 + ((i % 3) * .04);
-      rr(x, y, 34 + (i % 4) * 12, 2, 2, '#e6f4d9')
+    // 星星和流星
+    const starA = (1 - light) * W.stars;
+    if (starA > .02) {
+      ctx.fillStyle = '#fffbe8';
+      for (let i = 0; i < 70; i++) {
+        const x = (i * 197.3) % 800,
+          y = (i * 83.7) % 230,
+          tw = .5 + .5 * Math.sin(t * (1.5 + i % 5 * .4) + i),
+          sz = i % 7 ? 1.6 : 2.6;
+        ctx.globalAlpha = starA * (.35 + .65 * tw);
+        ctx.fillRect(x, y, sz, sz)
+      }
+      const sp = t % 17;
+      if (W.stars === 1 && sp < .8) {
+        const u = sp / .8,
+          sx = 150 + (Math.floor(t / 17) * 211) % 450 + u * 160,
+          sy = 40 + u * 60;
+        ctx.globalAlpha = starA * (1 - u);
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(sx - 40, sy - 15);
+        ctx.stroke()
+      }
+      ctx.globalAlpha = 1
     }
-    ctx.globalAlpha = 1;
-    {
-      const sp = spots.find(x => x.id === spot);
-      if (sp && sp.tint) {
-        ctx.fillStyle = sp.tint;
-        ctx.fillRect(0, 250, 800, 250)
+    // 太阳：白天从左往右划过天空，傍晚变橙、落到山后
+    const p = t % 120,
+      s = (p + 5) % 120;
+    sunPos = null;
+    if (s < 90 && W.sun > 0) {
+      const u = s / 90,
+        x = 60 + u * 680,
+        y = 245 - Math.sin(u * Math.PI) * 195,
+        warm = 1 - Math.sin(u * Math.PI),
+        sc = lerpC('#fff1b0', '#ff9a4a', warm);
+      const sg = ctx.createRadialGradient(x, y, 10, x, y, 110);
+      sg.addColorStop(0, css(sc, .55 * W.sun));
+      sg.addColorStop(1, css(sc, 0));
+      ctx.fillStyle = sg;
+      ctx.fillRect(x - 110, y - 110, 220, 220);
+      ctx.globalAlpha = W.sun;
+      ellipse(x, y, 34, 34, css(lerpC('#ffe8a1', '#ff8c42', warm)));
+      ctx.globalAlpha = 1;
+      sunPos = {x, y, vis: W.sun, warm}
+    }
+    // 月亮：只在夜晚出现
+    const m = (p - 78 + 120) % 120;
+    moonPos = null;
+    if (m < 45) {
+      const u = m / 45,
+        x = 80 + u * 640,
+        y = 235 - Math.sin(u * Math.PI) * 180,
+        vis = Math.max(.15, W.stars);
+      const mg = ctx.createRadialGradient(x, y, 20, x, y, 90);
+      mg.addColorStop(0, `rgba(220,230,255,${.3 * vis})`);
+      mg.addColorStop(1, 'rgba(220,230,255,0)');
+      ctx.fillStyle = mg;
+      ctx.fillRect(x - 90, y - 90, 180, 180);
+      ctx.globalAlpha = Math.max(.25, vis);
+      ellipse(x, y, 26, 26, '#f3f0dc');
+      ellipse(x - 8, y - 5, 5, 5, '#ddd8bf');
+      ellipse(x + 7, y + 6, 4, 4, '#ddd8bf');
+      ellipse(x + 9, y - 9, 2.5, 2.5, '#ddd8bf');
+      ctx.globalAlpha = 1;
+      moonPos = {x, y, vis}
+    }
+    // 云：天气越差越多越灰，夜里变暗
+    const cc = css(lerpC(lerpC('#ffffff', '#7d8792', W.grey), '#2b3550', (1 - light) * .75));
+    ctx.globalAlpha = .55 + W.grey * .35;
+    for (let i = 0; i < W.clouds; i++) {
+      const spd = 6 + (i % 4) * 3 + (W.storm ? 12 : 0),
+        x = ((i * 263 + t * spd) % 1100) - 150,
+        y = 28 + (i * 47) % 130,
+        z = .7 + (i % 3) * .3;
+      ellipse(x, y, 44 * z, 16 * z, cc);
+      ellipse(x + 30 * z, y - 10 * z, 30 * z, 20 * z, cc);
+      ellipse(x - 28 * z, y - 4 * z, 26 * z, 14 * z, cc);
+      ellipse(x + 58 * z, y + 2 * z, 28 * z, 12 * z, cc)
+    }
+    ctx.globalAlpha = 1
+  }
+
+  function drawGulls(light, W) {
+    if (light < .4 || W.rain || W.fog) return;
+    ctx.strokeStyle = '#3f4f58';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 4; i++) {
+      const gx = ((i * 230 + t * (20 + i * 4)) % 1000) - 100,
+        gy = 70 + i * 22 + Math.sin(t * 2 + i) * 8,
+        f = Math.sin(t * 8 + i * 2) * 4;
+      ctx.beginPath();
+      ctx.moveTo(gx - 9, gy - f);
+      ctx.quadraticCurveTo(gx - 4, gy - 4, gx, gy);
+      ctx.quadraticCurveTo(gx + 4, gy - 4, gx + 9, gy - f);
+      ctx.stroke()
+    }
+  }
+
+  function hillPath(base, amp, step, fn, bottom) {
+    ctx.beginPath();
+    ctx.moveTo(0, bottom);
+    for (let x = 0; x <= 800; x += step) ctx.lineTo(x, base + fn(x) * amp);
+    ctx.lineTo(800, bottom);
+    ctx.closePath();
+    ctx.fill()
+  }
+
+  // 远景：山、灯塔、村庄、远方的小岛
+  function drawFar(light, W) {
+    if (spot === 'deep') {
+      ctx.fillStyle = '#5f7f86';
+      ctx.beginPath();
+      ctx.moveTo(60, 252);
+      ctx.quadraticCurveTo(130, 220, 215, 252);
+      ctx.fill();
+      ctx.fillStyle = '#6f8f93';
+      ctx.beginPath();
+      ctx.moveTo(585, 252);
+      ctx.quadraticCurveTo(640, 234, 695, 252);
+      ctx.fill();
+      ctx.strokeStyle = '#4b5f55';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(138, 238);
+      ctx.quadraticCurveTo(142, 224, 150, 216);
+      ctx.stroke();
+      ellipse(146, 215, 10, 3, '#4b6a55');
+      ellipse(156, 216, 9, 3, '#4b6a55');
+      drawGulls(light, W);
+      return
+    }
+    const river = spot === 'river';
+    ctx.fillStyle = river ? '#a3c49a' : '#91b99b';
+    hillPath(river ? 190 : 175, 27, 80, x => Math.sin(x * .016), 300);
+    if (!river) {
+      // 灯塔
+      ctx.fillStyle = '#f4efe4';
+      ctx.beginPath();
+      ctx.moveTo(727, 192);
+      ctx.lineTo(743, 192);
+      ctx.lineTo(739, 128);
+      ctx.lineTo(731, 128);
+      ctx.fill();
+      ctx.fillStyle = '#c9574a';
+      ctx.fillRect(729, 168, 12, 8);
+      ctx.fillRect(730, 146, 10, 7);
+      ctx.fillStyle = '#3d4a52';
+      ctx.fillRect(728, 117, 14, 11);
+      ctx.fillStyle = '#f6d77a';
+      ctx.fillRect(730, 119, 10, 7);
+      ctx.fillStyle = '#c9574a';
+      ctx.beginPath();
+      ctx.moveTo(726, 117);
+      ctx.lineTo(744, 117);
+      ctx.lineTo(735, 106);
+      ctx.fill()
+    }
+    ctx.fillStyle = river ? '#86ad82' : '#719c7d';
+    hillPath(river ? 214 : 205, 25, 60, x => Math.cos(x * .014), 320);
+    drawGulls(light, W)
+  }
+
+  function drawWater(light, W) {
+    const pal = {
+        bay: ['#66b9bc', '#438f9e'],
+        river: ['#8cb79a', '#4f806c'],
+        deep: ['#2f73a3', '#0d3a62']
+      }[spot],
+      top = lerpC(lerpC(pal[0], '#f0a070', duskness(light) * .35), '#9aa5aa', W.grey * .4),
+      g = ctx.createLinearGradient(0, 250, 0, 500);
+    g.addColorStop(0, css(top));
+    g.addColorStop(1, pal[1]);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 250, 800, 250);
+    if (spot === 'deep') {
+      // 大海的涌浪
+      ctx.strokeStyle = 'rgba(220,240,255,.16)';
+      ctx.lineWidth = 2;
+      const rough = W.storm ? 2.2 : W.rain ? 1.5 : 1;
+      for (let row = 0; row < 11; row++) {
+        const y = 262 + row * 22,
+          amp = (2 + row * .7) * rough,
+          sp = .8 + row * .08;
+        ctx.beginPath();
+        for (let x = 0; x <= 800; x += 20) {
+          const yy = y + Math.sin(x * .02 + t * sp + row) * amp;
+          x ? ctx.lineTo(x, yy) : ctx.moveTo(x, yy)
+        }
+        ctx.stroke()
+      }
+      for (let i = 0; i < 10 * rough; i++) {
+        const x = ((i * 151 + t * (12 + i % 3 * 5)) % 880) - 40,
+          y = 270 + (i * 43) % 200;
+        ctx.globalAlpha = .35 * (Math.sin(t * 1.3 + i) + 1) / 2;
+        rr(x, y, 18, 3, 2, '#f2fbff')
+      }
+    } else {
+      // 海湾：来回的波光；河口：水往一个方向流
+      const river = spot === 'river',
+        n = river ? 26 : 19;
+      for (let i = 0; i < n; i++) {
+        const dir = river ? 1 : (i % 2 ? 1 : -1),
+          spd = river ? 30 + i % 5 * 8 : 14 + i % 4,
+          x = ((i * 67 + t * spd * dir) % 920 + 920) % 920 - 60,
+          y = 278 + (i * 37) % 204;
+        ctx.globalAlpha = .14 + ((i % 3) * .04);
+        rr(x, y, (river ? 24 : 34) + (i % 4) * 12, 2, 2, '#e6f4d9')
       }
     }
+    ctx.globalAlpha = 1;
+    // 太阳倒影
+    if (sunPos && sunPos.vis > .25 && sunPos.y < 250) {
+      ctx.fillStyle = css(lerpC('#fff3c4', '#ffb070', sunPos.warm));
+      for (let i = 0; i < 12; i++) {
+        const y = 256 + i * 10,
+          w = 34 - i * 2,
+          x = sunPos.x + Math.sin(t * 3 + i * 1.3) * (3 + i * .8);
+        ctx.globalAlpha = .4 * sunPos.vis * (1 - i / 14);
+        ctx.fillRect(x - w / 2, y, w, 2.5)
+      }
+      ctx.globalAlpha = 1
+    }
+  }
+
+  // 水面远处的东西：帆船、货轮、鲸鱼喷水
+  function drawFarOnWater(light, W) {
+    if (spot === 'bay') {
+      const x = ((t * 7) % 1000) - 100;
+      ctx.fillStyle = '#7a5a44';
+      ctx.beginPath();
+      ctx.moveTo(x - 16, 250);
+      ctx.lineTo(x + 16, 250);
+      ctx.lineTo(x + 11, 256);
+      ctx.lineTo(x - 11, 256);
+      ctx.fill();
+      ctx.fillStyle = '#f7f3e6';
+      ctx.beginPath();
+      ctx.moveTo(x, 220);
+      ctx.lineTo(x, 248);
+      ctx.lineTo(x + 15, 246);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(x - 2, 226);
+      ctx.lineTo(x - 2, 248);
+      ctx.lineTo(x - 12, 247);
+      ctx.fill()
+    } else if (spot === 'deep') {
+      shipX = 900 - ((t * 4) % 1100);
+      const x = shipX;
+      ctx.fillStyle = '#4a4f5a';
+      ctx.beginPath();
+      ctx.moveTo(x - 50, 243);
+      ctx.lineTo(x + 50, 243);
+      ctx.lineTo(x + 44, 251);
+      ctx.lineTo(x - 46, 251);
+      ctx.fill();
+      ['#c9574a', '#4f7fb5', '#e3a746', '#5f8f7a', '#c9574a'].forEach((c, i) => {
+        ctx.fillStyle = c;
+        ctx.fillRect(x - 40 + i * 14, 236, 12, 7)
+      });
+      ctx.fillStyle = '#e9e5da';
+      ctx.fillRect(x + 32, 228, 12, 15);
+      // 鲸鱼喷水
+      const w = t % 23;
+      if (w < 2.6) {
+        const u = w / 2.6;
+        ellipse(470, 254, 24, 5, '#2f4c63');
+        ctx.fillStyle = 'rgba(235,248,255,.8)';
+        for (let i = 0; i < 12; i++) {
+          const a = -Math.PI / 2 + (i - 5.5) * .12,
+            r = Math.sin(u * Math.PI) * (26 + (i % 3) * 6);
+          ctx.beginPath();
+          ctx.arc(470 + Math.cos(a) * r * .6, 248 + Math.sin(a) * r, 2.2, 0, Math.PI * 2);
+          ctx.fill()
+        }
+      }
+    } else {
+      // 河上的小渔船
+      const x = 820 - ((t * 10) % 1000);
+      ctx.fillStyle = '#6d5138';
+      ctx.beginPath();
+      ctx.moveTo(x - 20, 262);
+      ctx.lineTo(x + 20, 262);
+      ctx.lineTo(x + 14, 269);
+      ctx.lineTo(x - 14, 269);
+      ctx.fill();
+      ctx.fillStyle = '#d8c39a';
+      ctx.beginPath();
+      ctx.moveTo(x - 10, 262);
+      ctx.quadraticCurveTo(x, 248, x + 10, 262);
+      ctx.fill();
+      ctx.fillStyle = '#3d4a52';
+      ctx.beginPath();
+      ctx.arc(x + 13, 256, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#6d5138';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(x + 14, 258);
+      ctx.lineTo(x + 26, 272);
+      ctx.stroke()
+    }
+  }
+
+  function drawShore(light, W) {
+    if (spot === 'deep') return;
+    if (spot === 'bay') {
     // far shore + near grassy bank
     ctx.fillStyle = '#a6bd7e';
     ctx.beginPath();
@@ -1619,30 +1928,148 @@
         y = 392 + (i * 21) % 78;
       ellipse(x, y, 3, 3, i % 2 ? '#f8e69b' : '#fff3d4')
     }
-    // drifting treasure crate event
-    if (!treasureActive && t >= treasureAt) {
-      treasureActive = true;
-      treasureUntil = t + 13;
-      $('#treasureBtn').style.display = 'block';
-      message('湖面漂来一个宝箱！快点左上角把它捞起来！')
+
+      return
     }
-    if (treasureActive) {
-      const bx = 365 + Math.sin(t * 1.3) * 5,
-        by = 305 + Math.sin(t * 2.4) * 3;
-      ctx.save();
-      ctx.translate(bx, by);
-      ctx.rotate(Math.sin(t * 1.5) * .04);
-      rr(-15, -10, 30, 22, 4, '#9a6538');
-      rr(-18, -12, 36, 7, 3, '#d49a4c');
-      rr(-3, -12, 6, 25, 2, '#efce68');
-      ctx.restore();
-      if (t > treasureUntil) {
-        treasureActive = false;
-        treasureAt = t + 25 + Math.random() * 20;
-        $('#treasureBtn').style.display = 'none';
-        message('漂流宝箱被水流带走了。')
+    // 河口：对岸小村庄、石桥、睡莲、更高的蒲草
+    ctx.fillStyle = '#93b077';
+    ctx.beginPath();
+    ctx.moveTo(0, 253);
+    ctx.quadraticCurveTo(310, 233, 800, 252);
+    ctx.lineTo(800, 269);
+    ctx.quadraticCurveTo(400, 252, 0, 275);
+    ctx.fill();
+    for (const [x, w, h, roof] of HOUSES) {
+      const base = 248;
+      ctx.fillStyle = '#efe3c8';
+      ctx.fillRect(x, base - h, w, h);
+      ctx.fillStyle = roof;
+      ctx.beginPath();
+      ctx.moveTo(x - 4, base - h);
+      ctx.lineTo(x + w / 2, base - h - 12);
+      ctx.lineTo(x + w + 4, base - h);
+      ctx.fill();
+      ctx.fillStyle = '#6b5a48';
+      ctx.fillRect(x + w / 2 - 3, base - h + 5, 6, 5)
+    }
+    // 石拱桥
+    ctx.fillStyle = '#b3a587';
+    ctx.fillRect(40, 226, 210, 24);
+    ctx.fillStyle = '#9a8c70';
+    ctx.fillRect(36, 222, 218, 6);
+    ctx.fillStyle = '#7fae95';
+    for (let k = 0; k < 3; k++) {
+      ctx.beginPath();
+      ctx.moveTo(62 + k * 66, 250);
+      ctx.arc(84 + k * 66, 250, 22, Math.PI, 0);
+      ctx.fill()
+    }
+    ctx.fillStyle = '#6f8a55';
+    ctx.beginPath();
+    ctx.moveTo(0, 363);
+    ctx.quadraticCurveTo(230, 335, 410, 375);
+    ctx.quadraticCurveTo(600, 416, 800, 356);
+    ctx.lineTo(800, 500);
+    ctx.lineTo(0, 500);
+    ctx.fill();
+    ctx.fillStyle = '#8f9c64';
+    ctx.beginPath();
+    ctx.moveTo(0, 382);
+    ctx.quadraticCurveTo(210, 347, 390, 392);
+    ctx.quadraticCurveTo(600, 436, 800, 372);
+    ctx.lineTo(800, 408);
+    ctx.quadraticCurveTo(540, 468, 320, 417);
+    ctx.quadraticCurveTo(160, 383, 0, 420);
+    ctx.fill();
+    for (const [x, y, r, flower] of LILIES) {
+      const by = y + Math.sin(t * 1.2 + x) * 1.5;
+      ctx.fillStyle = '#4f8f55';
+      ctx.beginPath();
+      ctx.moveTo(x, by);
+      ctx.ellipse(x, by, r, r * .42, 0, .3, Math.PI * 2 - .1);
+      ctx.closePath();
+      ctx.fill();
+      if (flower) {
+        ellipse(x + 2, by - 4, 5, 4, '#f4a7c0');
+        ellipse(x + 2, by - 6, 2.5, 2.5, '#ffe28a')
       }
     }
+    for (let i = 0; i < 30; i++) {
+      const x = (i * 29 + 7) % 800,
+        y = 258 + (i * 13) % 22,
+        sway = Math.sin(t * 1.5 + i) * 3;
+      ctx.strokeStyle = i % 2 ? '#4f7a4a' : '#5d8a52';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(x, y + 18);
+      ctx.quadraticCurveTo(x - 4, y, x + sway, y - 26);
+      ctx.stroke();
+      ellipse(x + sway, y - 24, 3, 7, '#7a5233')
+    }
+    for (let i = 0; i < 12; i++) {
+      const x = (i * 83 + 20) % 800,
+        y = 392 + (i * 23) % 78;
+      ellipse(x, y, 3, 3, i % 2 ? '#d9c2f0' : '#fff3d4')
+    }
+  }
+
+  // 近景：沙滩/泥滩和贝壳、树、码头、小船
+  function drawForeground(light, W) {
+    if (spot === 'deep') {
+      // 渔船
+      ctx.fillStyle = '#7b4f35';
+      ctx.beginPath();
+      ctx.moveTo(170, 386);
+      ctx.lineTo(540, 386);
+      ctx.quadraticCurveTo(565, 386, 595, 368);
+      ctx.lineTo(560, 440);
+      ctx.lineTo(205, 440);
+      ctx.quadraticCurveTo(180, 420, 170, 386);
+      ctx.fill();
+      ctx.fillStyle = '#e9e1cf';
+      ctx.fillRect(176, 398, 380, 6);
+      ctx.fillStyle = '#b5523f';
+      ctx.fillRect(192, 420, 362, 8);
+      ctx.fillStyle = '#c99a63';
+      ctx.fillRect(170, 380, 382, 7);
+      rr(190, 318, 80, 62, 6, '#efe6d2');
+      ctx.fillStyle = '#b5523f';
+      ctx.fillRect(184, 312, 92, 9);
+      rr(205, 334, 22, 18, 3, '#5d7d8f');
+      rr(238, 334, 22, 18, 3, '#5d7d8f');
+      ctx.fillStyle = '#6b4a33';
+      ctx.fillRect(228, 150, 5, 162);
+      const fl = Math.sin(t * 5) * 3;
+      ctx.fillStyle = '#e8544a';
+      ctx.beginPath();
+      ctx.moveTo(233, 152);
+      ctx.lineTo(264, 158 + fl);
+      ctx.lineTo(233, 166);
+      ctx.fill();
+      ctx.strokeStyle = '#8a6142';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(282, 360);
+      ctx.lineTo(548, 360);
+      ctx.stroke();
+      for (let x = 290; x <= 545; x += 32) {
+        ctx.beginPath();
+        ctx.moveTo(x, 360);
+        ctx.lineTo(x, 381);
+        ctx.stroke()
+      }
+      // 挂在船舱上的提灯
+      rr(273, 330, 10, 13, 3, '#4a4036');
+      rr(275, 332, 6, 8, 2, '#f6d27a');
+      // 船边的浪花
+      for (let i = 0; i < 14; i++) {
+        ctx.globalAlpha = .5 + .3 * Math.sin(t * 3 + i);
+        ellipse(185 + i * 28 + Math.sin(t * 2 + i) * 4, 441 + Math.sin(t * 2.5 + i) * 1.5, 14, 3, '#eef8ff')
+      }
+      ctx.globalAlpha = 1;
+      return
+    }
+    if (spot === 'bay') {
     // sandy shore and clams
     ctx.fillStyle = '#d8c392';
     ctx.beginPath();
@@ -1681,6 +2108,419 @@
       ctx.lineTo(461 + i * 41, 258);
       ctx.stroke()
     }
+
+    } else {
+    // sandy shore and clams
+    ctx.fillStyle = '#b9a37a';
+    ctx.beginPath();
+    ctx.moveTo(0, 419);
+    ctx.quadraticCurveTo(180, 389, 315, 421);
+    ctx.quadraticCurveTo(425, 449, 570, 418);
+    ctx.lineTo(560, 500);
+    ctx.lineTo(0, 500);
+    ctx.fill();
+    ctx.strokeStyle = '#8f7b58';
+    ctx.lineWidth = 2;
+    clamSpots.filter(q => q.ready).forEach(q => {
+      const shell = clamTypes.find(a => a.n === q.type);
+      ctx.font = '20px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(shell.e, q.x, q.y + 3);
+      ctx.font = '9px system-ui';
+      ctx.fillStyle = '#544a3c';
+      ctx.fillText(q.type, q.x, q.y + 15)
+    });
+
+      // 垂柳
+      ctx.fillStyle = '#6a5038';
+      ctx.fillRect(104, 100, 22, 153);
+      ellipse(115, 98, 58, 34, '#6f9a5a');
+      ctx.strokeStyle = '#7fae66';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 26; i++) {
+        const x0 = 62 + i * 4.3,
+          len = 70 + (i * 37) % 60,
+          sway = Math.sin(t * 1.4 + i * .4) * 6;
+        ctx.beginPath();
+        ctx.moveTo(x0, 100);
+        ctx.quadraticCurveTo(x0 + sway * .4, 100 + len * .5, x0 + sway, 100 + len);
+        ctx.stroke()
+      }
+    ctx.fillStyle = '#8e6b4b';
+    ctx.fillRect(448, 244, 205, 15);
+    ctx.fillRect(465, 259, 14, 79);
+    ctx.fillRect(628, 259, 14, 79);
+    for (let i = 0; i < 5; i++) {
+      ctx.strokeStyle = '#6d5138';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(461 + i * 41, 246);
+      ctx.lineTo(461 + i * 41, 258);
+      ctx.stroke()
+    }
+
+      // 拴在码头边的小划艇
+      const by = Math.sin(t * 1.6) * 1.5;
+      ctx.fillStyle = '#9a6a44';
+      ctx.beginPath();
+      ctx.moveTo(668, 300 + by);
+      ctx.lineTo(752, 300 + by);
+      ctx.lineTo(738, 314 + by);
+      ctx.lineTo(680, 314 + by);
+      ctx.fill();
+      ctx.fillStyle = '#7a5234';
+      ctx.fillRect(676, 300 + by, 68, 4);
+      ctx.strokeStyle = '#d8c39a';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(642, 290);
+      ctx.quadraticCurveTo(656, 302, 670, 302 + by);
+      ctx.stroke()
+    }
+    // 码头尽头的路灯
+    ctx.fillStyle = '#5b4030';
+    ctx.fillRect(644, 214, 4, 30);
+    rr(639, 202, 14, 13, 3, '#3b3b3b');
+    rr(641, 204, 10, 9, 2, '#f6d27a');
+    // 渔夫脚边的提灯
+    rr(362, 368, 12, 15, 3, '#4a4036');
+    rr(364, 370, 8, 10, 2, '#f6d27a')
+  }
+
+  function drawSwimmers(light, W) {
+    let list;
+    if (spot === 'river') list = [
+      {e: '🦆', x: (100 + t * 14) % 900 - 50, y: 274 + Math.sin(t * 2) * 1.5, size: 22, a: 1, dir: 1},
+      {e: '🦆', x: (70 + t * 14) % 900 - 50, y: 279 + Math.sin(t * 2 + 1) * 1.5, size: 15, a: 1, dir: 1},
+      {e: '🦢', x: 820 - (t * 9) % 920, y: 292 + Math.sin(t * 1.6) * 2, size: 26, a: 1, dir: -1},
+      {e: '🐸', x: 150, y: 296 + Math.sin(t * 1.2 + 150) * 1.5, size: 15, a: 1, dir: -1},
+      {e: '🐟', x: (300 + t * 20) % 900 - 50, y: 345 + Math.sin(t * 1.5) * 6, size: 22, a: .45, dir: 1}
+    ];
+    else if (spot === 'deep') list = [
+      {e: '🐋', x: (260 + t * 7) % 1000 - 100, y: 335 + Math.sin(t * .8) * 5, size: 54, a: .5, dir: 1},
+      {e: '🦈', x: 900 - (t * 19) % 1000, y: 300, size: 30, a: .6, dir: -1},
+      {e: '🦑', x: 660 + Math.sin(t * .6) * 60, y: 350 + Math.sin(t * 1.1) * 10, size: 24, a: .5, dir: -1},
+      {e: '🐢', x: (500 + t * 11) % 900 - 50, y: 282 + Math.sin(t * 1.3) * 4, size: 22, a: .7, dir: 1}
+    ];
+    else list = [
+      {e: '🐬', x: (720 - t * 22 % 900 + 900) % 900 - 40, y: 370 + Math.sin(t * 2) * 7, size: 28, a: .78, dir: -1},
+      {e: '🪼', x: 178 + Math.sin(t * .7) * 28, y: 310 + Math.sin(t * 1.3) * 14, size: 27, a: .7, dir: -1},
+      {e: '🐢', x: (80 + t * 12) % 920 - 60, y: 330 + Math.sin(t * 1.4) * 5, size: 26, a: .7, dir: 1},
+      {e: '🐠', x: (400 + t * 26) % 920 - 60, y: 352 + Math.sin(t * 2.2) * 6, size: 20, a: .7, dir: 1}
+    ];
+    ctx.textAlign = 'center';
+    for (const a of list) {
+      ctx.save();
+      ctx.globalAlpha = a.a;
+      ctx.font = `${a.size}px sans-serif`;
+      ctx.translate(a.x, a.y);
+      // 表情符号默认朝左，往右游时翻转
+      if (a.dir > 0) ctx.scale(-1, 1);
+      ctx.fillText(a.e, 0, 0);
+      ctx.restore()
+    }
+    // 深海的飞鱼
+    if (spot === 'deep') {
+      const u = (t % 9) / 1.1;
+      if (u < 1) {
+        ctx.save();
+        ctx.translate(620 + u * 120, 262 - Math.sin(u * Math.PI) * 45);
+        ctx.rotate(-.6 + u * 1.2);
+        ctx.scale(-1, 1);
+        ctx.font = '18px sans-serif';
+        ctx.fillText('🐟', 0, 0);
+        ctx.restore()
+      }
+    }
+  }
+
+  // 夜晚和天气变暗后，叠上灯光
+  function finishWorld(light, W) {
+    const dusk = duskness(light),
+      dark = Math.min(.7, (1 - light) * .55 + W.dark);
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-atop';
+    if (dusk > 0) {
+      ctx.fillStyle = `rgba(255,140,80,${dusk * .14})`;
+      ctx.fillRect(0, 0, 800, 500)
+    }
+    if (dark > .01) {
+      ctx.fillStyle = `rgba(10,20,52,${dark})`;
+      ctx.fillRect(0, 0, 800, 500)
+    }
+    if (W.fog) {
+      const g = ctx.createLinearGradient(0, 150, 0, 500);
+      g.addColorStop(0, 'rgba(225,232,230,.6)');
+      g.addColorStop(.45, 'rgba(225,232,230,.28)');
+      g.addColorStop(1, 'rgba(225,232,230,.08)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, 800, 500)
+    }
+    ctx.restore();
+    drawGlows(Math.min(1, 1 - light + W.dark), W)
+  }
+
+  function drawGlows(n, W) {
+    if (n < .04) return;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    // 月光倒影
+    if (moonPos && moonPos.vis > .2) {
+      for (let i = 0; i < 16; i++) {
+        const y = 254 + i * 12,
+          w = 30 - i * 1.3,
+          x = moonPos.x + Math.sin(t * 2.2 + i * 1.7) * (3 + i * 1.2);
+        ctx.fillStyle = `rgba(200,215,255,${.22 * n * moonPos.vis * (1 - i / 18)})`;
+        ctx.fillRect(x - w / 2, y, w, 2)
+      }
+    }
+    if (spot === 'bay') {
+      // 灯塔的光束左右扫动
+      const L = LIGHTHOUSE,
+        c = Math.cos(t * 1.1);
+      for (const [ang, a] of [[Math.PI + .08, Math.max(0, c)], [-.08, Math.max(0, -c)]]) {
+        if (a < .02) continue;
+        const g = ctx.createRadialGradient(L.x, L.y, 0, L.x, L.y, 520);
+        g.addColorStop(0, `rgba(255,240,180,${.35 * n * a})`);
+        g.addColorStop(1, 'rgba(255,240,180,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.moveTo(L.x, L.y);
+        ctx.arc(L.x, L.y, 520, ang - .06, ang + .06);
+        ctx.closePath();
+        ctx.fill()
+      }
+      glowAt(L.x, L.y, W.fog ? 50 : 26, '#fff0b4', .85 * n)
+    }
+    if (spot === 'river') {
+      for (const [x, w, h] of HOUSES) {
+        const wx = x + w / 2,
+          wy = 248 - h + 7.5,
+          on = (Math.sin(x * 7.3) + 1) / 2 > .25;
+        if (!on) continue;
+        ctx.fillStyle = `rgba(255,210,120,${.9 * n})`;
+        ctx.fillRect(wx - 3, wy - 2.5, 6, 5);
+        glowAt(wx, wy, 14, '#ffd37a', .5 * n)
+      }
+    }
+    if (spot === 'deep') {
+      glowAt(216, 343, 30, '#ffd37a', .55 * n);
+      glowAt(249, 343, 30, '#ffd37a', .55 * n);
+      ctx.fillStyle = `rgba(255,210,120,${.8 * n})`;
+      ctx.fillRect(205, 334, 22, 18);
+      ctx.fillRect(238, 334, 22, 18);
+      glowAt(278, 338, 50, '#ffcf7a', .6 * n);
+      glowAt(230, 150, 14, Math.sin(t * 3) > 0 ? '#ff5a4a' : '#ffffff', .9 * n);
+      glowAt(shipX - 40, 236, 10, '#ffe7a0', .8 * n);
+      glowAt(shipX + 38, 228, 10, '#ffe7a0', .8 * n);
+      glowAt(shipX + 50, 243, 7, '#7dff9a', .8 * n);
+      // 夜光浮游生物
+      for (let i = 0; i < 34; i++) {
+        const x = (i * 151 + Math.sin(t * .3 + i) * 30) % 800,
+          y = 275 + (i * 61) % 200,
+          b = Math.max(0, Math.sin(t * 1.7 + i * 2.1));
+        if (y > 370 && x > 160 && x < 600) continue;
+        glowAt(x, y, 7, '#7ff3ff', .7 * n * b)
+      }
+    } else {
+      glowAt(646, 208, 50, '#ffcf7a', .55 * n);
+      glowAt(368, 376, 60, '#ffcf7a', .5 * n);
+      // 萤火虫（下雨时不出来）
+      if (!W.rain) {
+        for (let i = 0; i < 16; i++) {
+          const x = ((i * 97 + Math.sin(t * .5 + i) * 40) % 800 + 800) % 800,
+            y = 290 + (i * 37) % 150 + Math.sin(t * .8 + i * 2) * 12,
+            b = Math.max(0, Math.sin(t * 2 + i * 1.3));
+          glowAt(x, y, 9, '#e8ff8a', .9 * n * b)
+        }
+      }
+    }
+    // 夜里浮漂会发光，方便看清有没有咬钩
+    if (state !== 'idle') glowAt(bob.x, bob.y + 4, state === 'bite' ? 30 : 20, state === 'bite' ? '#ff6a4a' : '#ffb08a', .7 * n);
+    ctx.restore()
+  }
+
+  // 雨、雾、闪电画在最上层
+  function drawWeather(light, W) {
+    if (W.fog) {
+      for (let i = 0; i < 6; i++) {
+        const y = 170 + i * 55,
+          x = ((t * (8 + i * 2) * (i % 2 ? 1 : -1)) % 900 + 900) % 900 - 450;
+        ctx.globalAlpha = .16;
+        ellipse(x + 400, y, 420, 26, '#eef2f0');
+        ellipse(x + 1300, y, 420, 26, '#eef2f0');
+        ellipse(x - 500, y, 420, 26, '#eef2f0')
+      }
+      ctx.globalAlpha = 1
+    }
+    if (!W.rain) return;
+    const slant = W.storm ? 14 : 7,
+      vx = W.storm ? 260 : 180,
+      vy = W.storm ? 620 : 480;
+    ctx.strokeStyle = 'rgba(223,238,245,.45)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    const hash = n => {
+      const v = Math.sin(n * 12.9898) * 43758.5453;
+      return v - Math.floor(v)
+    };
+    for (let i = 0; i < W.rain; i++) {
+      const sp = .8 + hash(i + 7) * .4,
+        x = (hash(i) * 860 + t * vx * sp) % 860 - 30,
+        y = (hash(i + 101) * 520 + t * vy * sp) % 520 - 20;
+      ctx.moveTo(x, y);
+      ctx.lineTo(x - slant, y + 16)
+    }
+    ctx.stroke();
+    // 雨点落在水面上的涟漪
+    ctx.strokeStyle = 'rgba(230,245,250,.5)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < (W.storm ? 22 : 14); i++) {
+      const c = t * 1.6 + i * .37,
+        k = c % 1,
+        n = Math.floor(c),
+        x = (i * 131 + n * 97) % 800,
+        y = 268 + (i * 53 + n * 41) % 220;
+      ctx.globalAlpha = .6 * (1 - k);
+      ctx.beginPath();
+      ctx.ellipse(x, y, 2 + k * 10, (2 + k * 10) * .35, 0, 0, Math.PI * 2);
+      ctx.stroke()
+    }
+    ctx.globalAlpha = 1;
+    if (W.storm) {
+      if (t >= lightningAt) {
+        lightningAt = t + 4 + Math.random() * 7;
+        flashUntil = t + .22;
+        let x = 100 + Math.random() * 600,
+          y = 0;
+        bolt = [[x, y]];
+        while (y < 240) {
+          y += 18 + Math.random() * 22;
+          x += (Math.random() - .5) * 50;
+          bolt.push([x, y])
+        }
+        setTimeout(() => sfx('thunder'), 250 + Math.random() * 900)
+      }
+      if (t < flashUntil) {
+        ctx.fillStyle = `rgba(240,245,255,${.5 * (flashUntil - t) / .22})`;
+        ctx.fillRect(0, 0, 800, 500);
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 3;
+        ctx.shadowColor = '#cfe0ff';
+        ctx.shadowBlur = 14;
+        ctx.beginPath();
+        bolt.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
+        ctx.stroke();
+        ctx.shadowBlur = 0
+      }
+    }
+  }
+
+  function changeWeather() {
+    const opts = Object.keys(WEATHERS).filter(w => w !== weather),
+      total = opts.reduce((a, w) => a + WEATHERS[w].weight, 0);
+    let r = Math.random() * total;
+    for (const w of opts) {
+      r -= WEATHERS[w].weight;
+      if (r <= 0) {
+        weather = w;
+        break
+      }
+    }
+    if (WEATHERS[weather].storm) lightningAt = t + 2
+  }
+
+
+  function updateHud() {
+    const walking = marketMode || aquariumMode,
+      night = isNight(),
+      phase = phaseName(),
+      key = `${walking}|${phase}|${weather}|${combo}`;
+    if (key === hudKey) return;
+    hudKey = key;
+    sceneEl.classList.toggle('walking', walking);
+    if (!walking) {
+      marketKeys.w = marketKeys.a = marketKeys.s = marketKeys.d = false;
+      document.querySelectorAll('#dpad .on').forEach(b => b.classList.remove('on'))
+    }
+    $('#phase').textContent = phase;
+    {
+      const W = WEATHERS[weather] || WEATHERS.晴朗;
+      $('#weather').textContent = `${night ? W.ne : W.e} ${weather}`
+    }
+    $('#comboPill').textContent = `🔥 连击 ${combo}`;
+    renderLurePick()
+  }
+
+  // 一帧游戏逻辑 + 画面；fixedDt 用于后台模拟
+  function frame(now, fixedDt) {
+    if (paused) {
+      last = now;
+      return
+    }
+    const dt = fixedDt ?? Math.min(.05, (now - last) / 1000);
+    last = now;
+    t += dt;
+    updateHud();
+    ctx.clearRect(0, 0, 800, 500);
+    updateWorkers();
+    updateAquarium();
+    updateDerby();
+    drawTank();
+    if (aquariumMode) {
+      drawAquarium(dt);
+      return
+    }
+    if (!tideActive && t >= nextTide) {
+      tideActive = true;
+      tideUntil = t + 13;
+      message('🌊 鱼群狂潮来了！趁现在抛竿或撒网！')
+    }
+    if (tideActive && t >= tideUntil) {
+      tideActive = false;
+      nextTide = t + 35 + Math.random() * 30
+    }
+    updateMarketCustomers(dt);
+    if (marketMode) {
+      drawMarket(dt);
+      return
+    }
+    const light = dayLight(),
+      W = WEATHERS[weather] || WEATHERS.晴朗,
+      mainCtx = ctx,
+      world = mainCtx === realCtx ? worldCtx : mainCtx;
+    drawSky(light, W);
+    if (world !== mainCtx) world.clearRect(0, 0, 800, 500);
+    ctx = world;
+    drawFar(light, W);
+    drawWater(light, W);
+    drawFarOnWater(light, W);
+    drawShore(light, W);
+    // drifting treasure crate event
+    if (!treasureActive && t >= treasureAt) {
+      treasureActive = true;
+      treasureUntil = t + 13;
+      $('#treasureBtn').style.display = 'block';
+      message('湖面漂来一个宝箱！快点左上角把它捞起来！')
+    }
+    if (treasureActive) {
+      const bx = 365 + Math.sin(t * 1.3) * 5,
+        by = 305 + Math.sin(t * 2.4) * 3;
+      ctx.save();
+      ctx.translate(bx, by);
+      ctx.rotate(Math.sin(t * 1.5) * .04);
+      rr(-15, -10, 30, 22, 4, '#9a6538');
+      rr(-18, -12, 36, 7, 3, '#d49a4c');
+      rr(-3, -12, 6, 25, 2, '#efce68');
+      ctx.restore();
+      if (t > treasureUntil) {
+        treasureActive = false;
+        treasureAt = t + 25 + Math.random() * 20;
+        $('#treasureBtn').style.display = 'none';
+        message('漂流宝箱被水流带走了。')
+      }
+    }
+    drawForeground(light, W);
     // Cast net: fish swim inside on their own, then one haul collects them all
     if (netState !== 'idle') {
       let nx = netX,
@@ -1776,7 +2616,7 @@
       }
     }
     // fisherman
-    ellipse(333, 385, 37, 9, '#486b56');
+    ellipse(333, 385, 37, 9, spot === 'deep' ? '#6b4a33' : '#486b56');
     ctx.fillStyle = '#f0b75d';
     ctx.beginPath();
     ctx.arc(329, 315, 13, 0, Math.PI * 2);
@@ -1880,36 +2720,7 @@
         ctx.restore()
       }
     }
-    // sea life swimming through the bay
-    const swimmers = [{
-      e: '🦈',
-      x: (80 + t * 17) % 920 - 60,
-      y: 326,
-      size: 30
-    }, {
-      e: '🐬',
-      x: (720 - t * 22 % 900 + 900) % 900 - 40,
-      y: 370 + Math.sin(t * 2) * 7,
-      size: 28
-    }, {
-      e: '🐋',
-      x: (260 + t * 8) % 900 - 50,
-      y: 348 + Math.sin(t) * 4,
-      size: 42
-    }, {
-      e: '🪼',
-      x: 178 + Math.sin(t * .7) * 28,
-      y: 310 + Math.sin(t * 1.3) * 14,
-      size: 27
-    }];
-    for (const a of swimmers) {
-      ctx.save();
-      ctx.globalAlpha = .78;
-      ctx.font = `${a.size}px sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.fillText(a.e, a.x, a.y);
-      ctx.restore()
-    }
+    drawSwimmers(light, W);
     // little lake sparkle
     for (let i = 0; i < 6; i++) {
       const x = (i * 147 + t * 7) % 800,
@@ -1947,6 +2758,10 @@
       ellipse(q.x, q.y, q.r, q.r * 1.35, '#e9ffff')
     }
     ctx.globalAlpha = 1;
+    finishWorld(light, W);
+    ctx = mainCtx;
+    if (world !== mainCtx) ctx.drawImage(worldCanvas, 0, 0);
+    drawWeather(light, W);
     if (tideActive) {
       rr(260, 132, 280, 36, 14, 'rgba(255,247,222,.9)');
       ctx.fillStyle = '#245c68';
@@ -1956,28 +2771,7 @@
     }
     if (t - weatherAt > 60) {
       weatherAt = t;
-      weather = ['晴朗', '多云', '小雨'][Math.floor(Math.random() * 3)];
-      $('#weather').textContent = ({
-        晴朗: '☀️ 晴朗',
-        多云: '☁️ 多云',
-        小雨: '🌧️ 小雨'
-      })[weather]
-    }
-    if (night) {
-      ctx.fillStyle = 'rgba(25,45,77,.22)';
-      ctx.fillRect(0, 0, 800, 500)
-    }
-    if (weather === '小雨') {
-      ctx.strokeStyle = 'rgba(235,249,244,.4)';
-      ctx.lineWidth = 1;
-      for (let i = 0; i < 24; i++) {
-        let x = (i * 47 + t * 60) % 800,
-          y = (i * 67 + t * 90) % 500;
-        ctx.beginPath();
-        ctx.moveTo(x, y);
-        ctx.lineTo(x - 6, y + 12);
-        ctx.stroke()
-      }
+      changeWeather()
     }
     if (state === 'waiting' && t >= biteAt) {
       state = 'bite';
@@ -2016,7 +2810,12 @@
   }
 
   function draw(now) {
-    if (!document.hidden) frame(now);
+    try {
+      if (!document.hidden) frame(now)
+    } finally {
+      ctx = realCtx;
+      tankCtx = realTankCtx
+    }
     requestAnimationFrame(draw)
   }
 
@@ -2103,7 +2902,7 @@
     const night = isNight(),
       useLure = opts.rod && lure && lureStock[lure] > 0 ? lure : '',
       lureBonus = useLure === 'shrimp' ? .08 : useLure === 'glow' ? (night ? .2 : .03) : 0,
-      rareChance = .04 + rod * .03 + (bait ? .13 : 0) + lureBonus + (opts.rod && opts.perfect ? .1 : 0) + (weather === '小雨' ? .06 : 0) + (tideActive ? .12 : 0),
+      rareChance = .04 + rod * .03 + (bait ? .13 : 0) + lureBonus + (opts.rod && opts.perfect ? .1 : 0) + (WEATHERS[weather]?.bonus || 0) + (tideActive ? .12 : 0),
       legendShare = useLure === 'glow' && night ? .3 : .16,
       roll = Math.random(),
       pool = species.filter(f => spotOf(f) === spot && (!f.night || night)),
