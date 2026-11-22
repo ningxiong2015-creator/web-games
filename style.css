@@ -38,6 +38,8 @@ body{
 }
 .stats{
   display:flex;
+  flex-wrap:wrap;
+  justify-content:flex-end;
   gap:8px
 }
 .pill{
@@ -367,7 +369,8 @@ body{
     font-size:21px
   }
   .stats{
-    flex-direction:column;
+    flex-wrap:wrap;
+    justify-content:flex-end;
     gap:4px
   }
   .pill{
@@ -392,5 +395,251 @@ body{
     top:12px;
     padding:8px 12px;
     font-size:13px
+  }
+}
+/* ---- 新增：头部按钮、暂停、触屏方向键、钓点、图鉴、饵料 ---- */
+.top{
+  gap:12px
+}
+.pillbtn{
+  font-family:inherit;
+  font-weight:700;
+  color:var(--ink);
+  cursor:pointer
+}
+.pillbtn:hover{
+  background:#fff
+}
+.pillbtn[aria-pressed="true"]{
+  background:#f3dfb3
+}
+.scene button{
+  -webkit-user-select:none;
+  user-select:none;
+  -webkit-touch-callout:none;
+  touch-action:manipulation
+}
+.scene .cast{
+  touch-action:none
+}
+.pauseoverlay{
+  position:absolute;
+  inset:0;
+  z-index:20;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  border:0;
+  background:rgba(20,50,60,.55);
+  color:#fff8e8;
+  font:850 30px/1.2 system-ui,sans-serif;
+  cursor:pointer
+}
+.pauseoverlay[hidden]{
+  display:none
+}
+.pauseoverlay small{
+  font-size:15px;
+  font-weight:650
+}
+.dpad{
+  position:absolute;
+  right:14px;
+  bottom:14px;
+  z-index:9;
+  display:none;
+  grid-template-columns:repeat(3,52px);
+  grid-template-rows:repeat(3,52px);
+  gap:4px;
+  touch-action:none
+}
+.scene.walking .dpad{
+  display:grid
+}
+.dpad button{
+  border:2px solid #fff9e9;
+  border-radius:14px;
+  background:rgba(255,253,244,.85);
+  color:#244e4d;
+  font-size:20px;
+  font-weight:850;
+  cursor:pointer;
+  touch-action:none
+}
+.dpad button:active,.dpad button.on{
+  background:#f0a34c
+}
+.dpad [data-dir="w"]{
+  grid-column:2;
+  grid-row:1
+}
+.dpad [data-dir="a"]{
+  grid-column:1;
+  grid-row:2
+}
+.dpad [data-act="e"]{
+  grid-column:2;
+  grid-row:2;
+  background:#f3dfb3
+}
+.dpad [data-dir="d"]{
+  grid-column:3;
+  grid-row:2
+}
+.dpad [data-dir="s"]{
+  grid-column:2;
+  grid-row:3
+}
+.shoplist button.current{
+  background:#f3dfb3;
+  border-color:#efa94e
+}
+.lurepick{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:5px;
+  margin:4px 0 6px
+}
+.lurepick button{
+  border:1px solid #d7dfc9;
+  background:#f1f5e7;
+  border-radius:9px;
+  padding:6px 4px;
+  color:#244e4d;
+  font-size:12px;
+  font-weight:750;
+  cursor:pointer
+}
+.lurepick button.current{
+  background:#f3dfb3;
+  border-color:#efa94e
+}
+.lurepick button:disabled{
+  opacity:.45;
+  cursor:default
+}
+.codex{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:5px
+}
+.codex div{
+  border-radius:10px;
+  background:#f3f5e8;
+  padding:6px 2px;
+  text-align:center;
+  font-size:11px;
+  line-height:1.25;
+  color:#244e4d
+}
+.codex div b{
+  display:block;
+  font-size:20px
+}
+.codex div.unknown{
+  color:#9aaa9f;
+  background:#eef0e4
+}
+.codex div.unknown b{
+  filter:grayscale(1) brightness(.2);
+  opacity:.35
+}
+.codex h3{
+  grid-column:1/-1;
+  font-size:12px;
+  margin:6px 0 0;
+  color:#55716c
+}
+@media(max-width:480px){
+  .dpad{
+    grid-template-columns:repeat(3,44px);
+    grid-template-rows:repeat(3,44px);
+    right:8px;
+    bottom:8px
+  }
+  .pauseoverlay{
+    font-size:22px
+  }
+}
+/* ---- 窄屏修正 ---- */
+@media(max-width:800px){
+  .top{
+    flex-wrap:wrap
+  }
+  .stats{
+    justify-content:flex-start
+  }
+  .side{
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr)
+  }
+  .card{
+    min-width:0
+  }
+}
+@media(max-width:600px){
+  .side{
+    display:flex
+  }
+  .toast{
+    white-space:normal;
+    max-width:92%;
+    text-align:center
+  }
+  .scene .marketbutton,.scene .eventbutton,.scene #sceneAquariumSelect{
+    left:8px!important;
+    padding:6px 10px!important;
+    font-size:12px!important;
+    min-width:0!important;
+    min-height:0!important;
+    max-width:46%!important
+  }
+  .scene #marketButton{
+    top:44px
+  }
+  .scene #aquariumButton{
+    top:78px!important
+  }
+  .scene #sceneAquariumSelect{
+    top:112px!important
+  }
+  .scene #treasureBtn{
+    top:146px!important
+  }
+  .cast{
+    top:84px;
+    right:8px;
+    padding:8px 14px;
+    font-size:13px
+  }
+  .netbutton{
+    top:44px;
+    right:8px;
+    padding:6px 10px;
+    font-size:12px
+  }
+}
+.scene.walking .cast,.scene.walking .netbutton{
+  display:none
+}
+@media(max-width:480px){
+  .dpad{
+    grid-template-columns:repeat(3,38px);
+    grid-template-rows:repeat(3,38px);
+    gap:3px
+  }
+  .dpad button{
+    font-size:16px;
+    border-radius:11px
+  }
+}
+.scene{
+  align-self:start
+}
+@media(min-width:801px){
+  .scene{
+    position:sticky;
+    top:12px
   }
 }

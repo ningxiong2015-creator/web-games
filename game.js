@@ -17,7 +17,7 @@
     progress = 0,
     hold = false,
     catchCount = 0,
-    coins = 25000,
+    coins = 500,
     aquariumMode = false,
     aquariumPlayer = {
       x: 400,
@@ -215,7 +215,8 @@
     e: '🐠',
     v: 25,
     c: '#bc8bdd',
-    rarity: '稀有'
+    rarity: '稀有',
+    night: true
   }, {
     n: '河豚',
     e: '🐡',
@@ -264,7 +265,218 @@
     v: 70,
     c: '#c78de2',
     rarity: '少见'
+  }, {
+    n: '灯笼鱼',
+    e: '🐟',
+    v: 15,
+    c: '#f6e27a',
+    rarity: '少见',
+    night: true
+  }, {
+    // 河口
+    n: '河虾',
+    e: '🦐',
+    v: 4,
+    c: '#f0a08a',
+    rarity: '常见',
+    spot: 'river'
+  }, {
+    n: '鲈鱼',
+    e: '🐟',
+    v: 9,
+    c: '#9fb3a0',
+    rarity: '普通',
+    spot: 'river'
+  }, {
+    n: '青蟹',
+    e: '🦀',
+    v: 16,
+    c: '#5f8f7a',
+    rarity: '少见',
+    spot: 'river'
+  }, {
+    n: '鳜鱼',
+    e: '🐠',
+    v: 36,
+    c: '#c9a35a',
+    rarity: '稀有',
+    spot: 'river'
+  }, {
+    n: '白鳝',
+    e: '🐍',
+    v: 48,
+    c: '#d8d8c8',
+    rarity: '稀有',
+    spot: 'river',
+    night: true
+  }, {
+    n: '中华鲟',
+    e: '🐟',
+    v: 260,
+    c: '#6c7f8e',
+    rarity: '传说',
+    spot: 'river'
+  }, {
+    // 深海
+    n: '带鱼',
+    e: '🐟',
+    v: 10,
+    c: '#d9e4ea',
+    rarity: '常见',
+    spot: 'deep'
+  }, {
+    n: '鱿鱼',
+    e: '🦑',
+    v: 14,
+    c: '#e7a3a0',
+    rarity: '普通',
+    spot: 'deep'
+  }, {
+    n: '海星',
+    e: '⭐',
+    v: 20,
+    c: '#f2b552',
+    rarity: '少见',
+    spot: 'deep'
+  }, {
+    n: '旗鱼',
+    e: '🐟',
+    v: 85,
+    c: '#4f7fb5',
+    rarity: '稀有',
+    spot: 'deep'
+  }, {
+    n: '鮟鱇鱼',
+    e: '🐡',
+    v: 110,
+    c: '#6b5d52',
+    rarity: '稀有',
+    spot: 'deep',
+    night: true
+  }, {
+    n: '大王乌贼',
+    e: '🦑',
+    v: 300,
+    c: '#b8576a',
+    rarity: '传说',
+    spot: 'deep'
+  }, {
+    n: '皇带鱼',
+    e: '🐉',
+    v: 380,
+    c: '#c9c6e8',
+    rarity: '传说',
+    spot: 'deep'
   }];
+  const spots = [{
+    id: 'bay',
+    name: '海湾',
+    e: '🏖️',
+    cost: 0,
+    reward: 300,
+    tint: null
+  }, {
+    id: 'river',
+    name: '河口',
+    e: '🌾',
+    cost: 400,
+    reward: 500,
+    tint: 'rgba(120,150,70,.28)'
+  }, {
+    id: 'deep',
+    name: '深海',
+    e: '🌊',
+    cost: 1500,
+    reward: 800,
+    tint: 'rgba(10,30,90,.38)'
+  }];
+  const lureNames = {
+      shrimp: '虾饵',
+      glow: '夜光饵'
+    },
+    decorLevels = [{
+      name: '无装饰',
+      cost: 0
+    }, {
+      name: '🌿 海草花园',
+      cost: 800
+    }, {
+      name: '🪸 珊瑚礁',
+      cost: 2500
+    }, {
+      name: '🚢 沉船宝藏',
+      cost: 6000
+    }];
+  // 新增状态
+  let paused = false,
+    muted = false,
+    codex = {},
+    codexRewards = {},
+    lure = '',
+    lureStock = {
+      shrimp: 0,
+      glow: 0
+    },
+    combo = 0,
+    bestCombo = 0,
+    perfectHook = false,
+    spot = 'bay',
+    unlockedSpots = {
+      bay: true
+    },
+    lastDaily = '',
+    dailyStreak = 0,
+    lastAqUI = -1,
+    actx = null;
+  try {
+    muted = localStorage.getItem('bay-fishing-muted') === '1'
+  } catch (e) {}
+  const sceneEl = document.querySelector('.scene');
+
+  function isNight() {
+    return (t % 120) > 80
+  }
+
+  function spotOf(f) {
+    return f.spot || 'bay'
+  }
+
+  // ---------- 音效（WebAudio 合成，无需音频文件） ----------
+  function unlockAudio() {
+    try {
+      actx = actx || new(window.AudioContext || window.webkitAudioContext)();
+      if (actx.state === 'suspended') actx.resume()
+    } catch (e) {}
+  }
+
+  function sfx(kind) {
+    if (muted || !actx || actx.state !== 'running') return;
+    const notes = {
+      bite: [[660, .08], [880, .12]],
+      catch: [[523, .08], [659, .08], [784, .16]],
+      perfect: [[784, .06], [1047, .06], [1319, .16]],
+      escape: [[330, .14], [220, .22]],
+      coin: [[988, .06], [1319, .12]],
+      unlock: [[523, .1], [784, .1], [1047, .22]]
+    }[kind];
+    if (!notes) return;
+    let at = actx.currentTime;
+    for (const [freq, dur] of notes) {
+      const o = actx.createOscillator(),
+        g = actx.createGain();
+      o.type = 'triangle';
+      o.frequency.value = freq;
+      g.gain.setValueAtTime(.0001, at);
+      g.gain.exponentialRampToValueAtTime(.14, at + .012);
+      g.gain.exponentialRampToValueAtTime(.0001, at + dur);
+      o.connect(g).connect(actx.destination);
+      o.start(at);
+      o.stop(at + dur + .03);
+      at += dur * .85
+    }
+  }
+  document.addEventListener('pointerdown', unlockAudio);
+  document.addEventListener('keydown', unlockAudio);
 
   function splash(x, y, power = 1) {
     for (let i = 0; i < Math.round(14 * power); i++) {
@@ -398,7 +610,10 @@
       nextPayrollAt = t + 30 * 30;
       message(`补发月薪 ${salary.toLocaleString()} 鱼币，员工恢复工作。`)
     }
-    updateAquariumUI()
+    if (t - lastAqUI >= .5 || t < lastAqUI) {
+      lastAqUI = t;
+      updateAquariumUI()
+    }
   }
 
   function drawAquarium(dt) {
@@ -482,6 +697,16 @@
         ctx.fillText(fish ? fish.e : ['🐟', '🐠', '🪼'][k], x + 25 + ((t * 15 + k * 47 + i * 13) % (w - 45)), y + 42 + k * 29 + Math.sin(t * 2 + k + i) * 5)
       }
     }
+    const decor = aq.decor || 0;
+    if (decor) {
+      ctx.textAlign = 'center';
+      const items = [['🌿', '🌱'], ['🪸', '🐚'], ['🚢', '💰']];
+      for (let lv = 0; lv < decor; lv++)
+        for (let i = 0; i < 5; i++) {
+          ctx.font = `${lv === 2 && i === 2 ? 40 : 24}px sans-serif`;
+          ctx.fillText(items[lv][i % 2], 40 + i * 180 + lv * 55, 116 + (lv === 2 ? 0 : Math.sin(t * 1.5 + i + lv) * 2))
+        }
+    }
     for (let i = 0; i < aq.staff; i++) {
       const x = 85 + i * 145;
       ctx.fillStyle = '#e6b86d';
@@ -518,6 +743,67 @@
     ctx.fillText('你', aquariumPlayer.x, aquariumPlayer.y + 15)
   }
 
+  function tankCapacity(aq) {
+    return aq.big * 10 + aq.small * 4
+  }
+
+  // 上架：从仓库拿出玻璃缸展出；下架：收进仓库（不退款，随时可再上架）
+  function shelfTank(kind, up) {
+    const aq = selectedAquarium();
+    if (!aq) {
+      message('先买并选择一座水族馆。');
+      return
+    }
+    const shown = kind === 'big' ? 'big' : 'small',
+      stored = kind === 'big' ? 'bigStored' : 'smallStored',
+      label = kind === 'big' ? '大玻璃缸' : '小玻璃缸';
+    aq[stored] = aq[stored] || 0;
+    if (up) {
+      if (!aq[stored]) {
+        message(`仓库里没有${label}，先去买一个。`);
+        return
+      }
+      aq[stored]--;
+      aq[shown]++;
+      message(`把一个${label}上架到水族馆 #${aq.id}，容量 ${tankCapacity(aq)} 条。`)
+    } else {
+      if (!aq[shown]) {
+        message(`水族馆 #${aq.id} 没有展出中的${label}。`);
+        return
+      }
+      aq[shown]--;
+      aq[stored]++;
+      // 容量变小时，放不下的鱼回到“我的鱼”
+      let over = Object.values(aq.fish).reduce((a, b) => a + b, 0) - tankCapacity(aq),
+        back = 0;
+      for (const name of Object.keys(aq.fish)) {
+        while (over > 0 && aq.fish[name] > 0) {
+          aq.fish[name]--;
+          inventory[name] = (inventory[name] || 0) + 1;
+          over--;
+          back++
+        }
+        if (!aq.fish[name]) delete aq.fish[name]
+      }
+      let text = `把一个${label}从水族馆 #${aq.id} 下架，收进仓库。`;
+      if (back) text += `放不下的 ${back} 条鱼回到了“我的鱼”。`;
+      if (aq.open && aq.big + aq.small === 0) {
+        aq.open = false;
+        aq.visitors = 0;
+        text += '没有展缸了，水族馆暂停营业。'
+      }
+      message(text);
+      renderBucket();
+      renderMarket()
+    }
+    renderTank();
+    updateAquariumUI()
+  }
+
+  function ticketPrice(aq) {
+    return 50 + (aq.decor || 0) * 15
+  }
+
   function selectedAquarium() {
     return aquariums.find(aq => aq.id === selectedAqId) || null
   }
@@ -529,8 +815,20 @@
     $('#aquariumButton').textContent = aquariumMode && aq ? `↩️ 离开水族馆 #${aq.id}` : aq ? `🏛️ 进入水族馆 #${aq.id}` : '🏛️ 进入水族馆';
     $('#aqVisitors').textContent = aq ? aq.visitors : 0;
     $('#aqStatus').textContent = aq ? (aq.open ? (aq.day <= 22 ? `水族馆 #${aq.id} 营业中：本月营业日 ${aq.day}/22。` : `水族馆 #${aq.id} 休息日 ${aq.day-22}/8，下月继续营业。`) : `正在管理水族馆 #${aq.id}，购买玻璃缸即可开业，员工可继续雇佣。`) : `你有 ${aquariums.length} 座水族馆。每座各自收门票和支付员工工资。`;
-    $('#aqDetails').textContent = aq ? `当前 #${aq.id}：大缸 ${aq.big} · 小缸 ${aq.small} · 员工 ${aq.staff}/5 · 展示鱼 ${Object.values(aq.fish).reduce((x,y)=>x+y,0)} 条` : '先买一座水族馆。';
-    $('#aquariumList').innerHTML = aquariums.length ? aquariums.map(a => `<button type="button" data-enter-aq="${a.id}" aria-label="进入水族馆 ${a.id}" style="grid-column:1/-1;width:100%;min-height:54px;text-align:left;padding:12px;border:3px solid ${a.id===selectedAqId?'#efa94e':'#317761'};border-radius:11px;background:${a.id===selectedAqId?'#efa94e':'#317761'};color:#fff;font-size:15px;font-weight:850;cursor:pointer;pointer-events:auto">🚪 点击进入水族馆 #${a.id}　·　${a.open?'营业中':'准备中'} · ${a.big+a.small} 个展缸</button>`).join('') : '<div class="tiny">还没有水族馆。</div>';
+    $('#aqDetails').textContent = aq ? `当前 #${aq.id}：展出大缸 ${aq.big} · 小缸 ${aq.small}${(aq.bigStored||0)+(aq.smallStored||0)?`（仓库里大缸 ${aq.bigStored||0} · 小缸 ${aq.smallStored||0}）`:''} · 容量 ${tankCapacity(aq)} 条 · 员工 ${aq.staff}/5 · 展示鱼 ${Object.values(aq.fish).reduce((x,y)=>x+y,0)} 条 · ${decorLevels[aq.decor||0].name}` : '先买一座水族馆。';
+    $('#aqTicket').textContent = aq ? ticketPrice(aq) : 50;
+    {
+      const lv = aq ? (aq.decor || 0) : 0,
+        nx = decorLevels[lv + 1];
+      $('#buyDecor').disabled = !aq || !nx || coins < nx.cost;
+      $('#buyDecor').textContent = !aq ? '🪸 升级当前馆装饰' : nx ? `🪸 升级装饰：${nx.name} · ${nx.cost.toLocaleString()}` : '✨ 当前馆装饰已满级'
+    }
+    const listHtml = aquariums.length ? aquariums.map(a => `<button type="button" data-enter-aq="${a.id}" aria-label="进入水族馆 ${a.id}" style="grid-column:1/-1;width:100%;min-height:54px;text-align:left;padding:12px;border:3px solid ${a.id===selectedAqId?'#efa94e':'#317761'};border-radius:11px;background:${a.id===selectedAqId?'#efa94e':'#317761'};color:#fff;font-size:15px;font-weight:850;cursor:pointer;pointer-events:auto">🚪 点击进入水族馆 #${a.id}　·　${a.open?'营业中':'准备中'} · ${a.big+a.small} 个展缸 · ${decorLevels[a.decor||0].name}</button>`).join('') : '<div class="tiny">还没有水族馆。</div>';
+    // 只有内容变化时才重建按钮，避免点击过程中按钮被替换
+    if ($('#aquariumList').dataset.html !== listHtml) {
+      $('#aquariumList').dataset.html = listHtml;
+      $('#aquariumList').innerHTML = listHtml
+    }
     const sceneSelect = $('#sceneAquariumSelect');
     sceneSelect.style.display = aquariums.length ? 'block' : 'none';
     const optKey = aquariums.map(a => a.id).join(',');
@@ -552,6 +850,14 @@
     $('#buyAquarium').disabled = coins < 10000;
     $('#buyLargeTank').disabled = !aq;
     $('#buySmallTank').disabled = !aq;
+    $('#unshelfLarge').disabled = !aq || !aq.big;
+    $('#unshelfSmall').disabled = !aq || !aq.small;
+    $('#shelfLarge').disabled = !aq || !aq.bigStored;
+    $('#shelfSmall').disabled = !aq || !aq.smallStored;
+    $('#unshelfLarge').textContent = `⬇️ 下架大缸（展出 ${aq?aq.big:0}）`;
+    $('#unshelfSmall').textContent = `⬇️ 下架小缸（展出 ${aq?aq.small:0}）`;
+    $('#shelfLarge').textContent = `⬆️ 上架大缸（仓库 ${aq?aq.bigStored||0:0}）`;
+    $('#shelfSmall').textContent = `⬆️ 上架小缸（仓库 ${aq?aq.smallStored||0:0}）`;
     $('#hireStaff').disabled = !aq || aq.staff >= 5;
     $('#runAquarium').disabled = !aq || aq.open || aq.big + aq.small === 0;
     $('#runAquarium').textContent = aq?.open ? '✅ 当前馆持续经营中' : aq && aq.big + aq.small ? '🚪 开始当前馆营业' : '🔒 先为当前馆购买玻璃缸';
@@ -570,8 +876,8 @@
       if (aq.day <= 22 && t >= aq.nextVisitor) {
         aq.visitors++;
         aq.totalVisitors++;
-        coins += aq.showUntil > t ? 100 : 50;
-        aq.nextVisitor = t + (aq.showUntil > t ? .28 : .45) + Math.random() * (aq.showUntil > t ? .14 : .25);
+        coins += ticketPrice(aq) * (aq.showUntil > t ? 2 : 1);
+        aq.nextVisitor = t + ((aq.showUntil > t ? .28 : .45) + Math.random() * (aq.showUntil > t ? .14 : .25)) * (1 - (aq.decor || 0) * .08);
         $('#coins').textContent = coins;
         if (aq.id === selectedAqId) $('#aqVisitors').textContent = aq.visitors
       }
@@ -826,10 +1132,34 @@
     ctx.fillText('你', marketPlayer.x, marketPlayer.y + 18)
   }
 
+  let hudKey = '';
+
+  function updateHud() {
+    const walking = marketMode || aquariumMode,
+      night = isNight(),
+      key = `${walking}|${night}|${combo}`;
+    if (key === hudKey) return;
+    hudKey = key;
+    sceneEl.classList.toggle('walking', walking);
+    if (!walking) {
+      marketKeys.w = marketKeys.a = marketKeys.s = marketKeys.d = false;
+      document.querySelectorAll('#dpad .on').forEach(b => b.classList.remove('on'))
+    }
+    $('#phase').textContent = night ? '🌙 夜晚' : '☀️ 白天';
+    $('#comboPill').textContent = `🔥 连击 ${combo}`;
+    renderLurePick()
+  }
+
   function draw(now) {
+    if (paused) {
+      last = now;
+      requestAnimationFrame(draw);
+      return
+    }
     const dt = Math.min(.05, (now - last) / 1000);
     last = now;
     t += dt;
+    updateHud();
     ctx.clearRect(0, 0, 800, 500);
     updateWorkers();
     updateAquarium();
@@ -861,7 +1191,7 @@
     sky.addColorStop(1, '#e4e8c8');
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, 800, 500);
-    const night = (t % 120) > 80;
+    const night = isNight();
     ellipse(643, 77, 39, 39, night ? '#e8e7d1' : '#ffe8a1');
     ctx.fillStyle = '#91b99b';
     ctx.beginPath();
@@ -890,6 +1220,13 @@
       rr(x, y, 34 + (i % 4) * 12, 2, 2, '#e6f4d9')
     }
     ctx.globalAlpha = 1;
+    {
+      const sp = spots.find(x => x.id === spot);
+      if (sp && sp.tint) {
+        ctx.fillStyle = sp.tint;
+        ctx.fillRect(0, 250, 800, 250)
+      }
+    }
     // far shore + near grassy bank
     ctx.fillStyle = '#a6bd7e';
     ctx.beginPath();
@@ -1300,6 +1637,7 @@
       }
       button.disabled = false;
       button.textContent = '🐟 鱼咬钩了！收竿';
+      sfx('bite');
       message('咬钩了！快点「收竿」！')
     }
     if (state === 'reel') {
@@ -1313,6 +1651,14 @@
       }
     }
     if (state === 'bite' && t - biteAt > 4) escapeFish();
+    {
+      const sp = spots.find(x => x.id === spot);
+      rr(662, 462, 126, 28, 12, 'rgba(255,249,233,.88)');
+      ctx.fillStyle = '#244e4d';
+      ctx.font = 'bold 14px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText(`📍 ${sp.e} ${sp.name}`, 725, 481)
+    }
     requestAnimationFrame(draw)
   }
 
@@ -1321,6 +1667,7 @@
   }
 
   function cast() {
+    if (paused) return;
     if (state === 'idle') {
       state = 'waiting';
       button.textContent = '⏳ 等鱼上钩…';
@@ -1331,30 +1678,53 @@
       return
     }
     if (state === 'bite') {
+      perfectHook = t - biteAt < .7;
       state = 'reel';
-      progress = 34 + rod * 6;
+      progress = 34 + rod * 6 + (perfectHook ? 15 : 0);
       button.disabled = false;
       button.textContent = '🪝 收线（按住）';
-      $('#progressText').textContent = '按住收线';
-      message('鱼咬钩了！按住按钮或空格收线，别让进度掉光！');
+      $('#progressText').textContent = perfectHook ? '✨ 完美收竿！按住收线' : '按住收线';
+      if (perfectHook) sfx('perfect');
+      message(perfectHook ? '✨ 完美收竿！稀有鱼概率提升，按住收线！' : '鱼咬钩了！按住按钮或空格收线，别让进度掉光！');
       return
     }
   }
 
-  function rollFish() {
-    const rareChance = .04 + rod * .03 + (bait ? .13 : 0) + (weather === '小雨' ? .06 : 0) + (tideActive ? .12 : 0),
+  // opts.rod: 鱼竿钓鱼（饵料、完美收竿生效）；渔网和自动员工不吃这些加成
+  function rollFish(opts = {}) {
+    const night = isNight(),
+      useLure = opts.rod && lure && lureStock[lure] > 0 ? lure : '',
+      lureBonus = useLure === 'shrimp' ? .08 : useLure === 'glow' ? (night ? .2 : .03) : 0,
+      rareChance = .04 + rod * .03 + (bait ? .13 : 0) + lureBonus + (opts.rod && opts.perfect ? .1 : 0) + (weather === '小雨' ? .06 : 0) + (tideActive ? .12 : 0),
+      legendShare = useLure === 'glow' && night ? .3 : .16,
       roll = Math.random(),
-      legendary = species.filter(f => f.rarity === '传说'),
-      rare = species.filter(f => f.rarity === '稀有'),
-      regular = species.filter(f => ['常见', '普通', '少见'].includes(f.rarity));
-    if (roll < rareChance * .16) return legendary[Math.floor(Math.random() * legendary.length)];
-    if (roll < rareChance) return rare[Math.floor(Math.random() * rare.length)];
-    return regular[Math.floor(Math.random() * regular.length)]
+      pool = species.filter(f => spotOf(f) === spot && (!f.night || night)),
+      legendary = pool.filter(f => f.rarity === '传说'),
+      rare = pool.filter(f => f.rarity === '稀有'),
+      regular = pool.filter(f => ['常见', '普通', '少见'].includes(f.rarity)),
+      pick = a => a[Math.floor(Math.random() * a.length)];
+    // 夜晚稀有鱼更容易遇到
+    const nightRare = night ? rare.filter(f => f.night) : [];
+    if (roll < rareChance * legendShare && legendary.length) return pick(legendary);
+    if (roll < rareChance && rare.length) return nightRare.length && Math.random() < .5 ? pick(nightRare) : pick(rare);
+    // 虾饵：普通鱼里更偏向甲壳类
+    if (useLure === 'shrimp') {
+      const crust = regular.filter(f => ['🦐', '🦞', '🦀'].includes(f.e));
+      if (crust.length && Math.random() < .4) return pick(crust)
+    }
+    return pick(regular.length ? regular : pool)
   }
 
   function awardFish(f, show = true) {
     inventory[f.n] = (inventory[f.n] || 0) + 1;
     catchCount++;
+    const firstTime = !codex[f.n];
+    codex[f.n] = (codex[f.n] || 0) + 1;
+    if (firstTime) {
+      renderCodex();
+      checkCodexRewards();
+      if (!show) message(`📖 图鉴新收录：${f.e} ${f.n}！`)
+    }
     if (derbyActive) {
       derbyCaught++;
       derbyScore += f.rarity === '传说' ? 50 : f.rarity === '稀有' ? 25 : f.rarity === '少见' ? 12 : 6;
@@ -1362,7 +1732,7 @@
     }
     if (show) {
       $('#guide').textContent = `漂亮！你钓到了${f.n}！到鱼市卖掉它就能赚鱼币。`;
-      message(`${f.e} 钓到了${f.n}！去鱼市卖掉它吧。`)
+      message(firstTime ? `📖 新图鉴！${f.e} 钓到了${f.n}！` : `${f.e} 钓到了${f.n}！去鱼市卖掉它吧。`)
     }
   }
 
@@ -1407,8 +1777,18 @@
     state = 'idle';
     button.disabled = false;
     button.textContent = '🎣 再抛一次';
-    fish = rollFish();
+    fish = rollFish({
+      rod: true,
+      perfect: perfectHook
+    });
     if (bait > 0) bait--;
+    if (lure && lureStock[lure] > 0) {
+      lureStock[lure]--;
+      if (!lureStock[lure]) {
+        lure = '';
+      }
+      renderLurePick()
+    }
     jump = {
       start: t,
       emoji: fish.e
@@ -1416,7 +1796,18 @@
     splash(bob.x, 286, 2.1);
     $('#gearInfo').textContent = `${rodNames[rod]}鱼竿 · 蚯蚓鱼饵 ${bait} 个`;
     awardFish(fish);
-    $('#progressText').textContent = '钓上来了！';
+    combo++;
+    bestCombo = Math.max(bestCombo, combo);
+    let bonusText = '';
+    if (combo >= 3) {
+      const bonus = Math.min(30, combo * 2);
+      coins += bonus;
+      bonusText = ` 🔥 ${combo} 连击 +${bonus} 鱼币`
+    }
+    $('#progressText').textContent = (perfectHook ? '✨ 完美！' : '钓上来了！') + (combo >= 2 ? ` 连击 ${combo}` : '');
+    if (bonusText) message($('#toast').textContent + bonusText);
+    perfectHook = false;
+    sfx('catch');
     $('#meter').style.width = '100%';
     refreshCatchUI();
     setTimeout(() => {
@@ -1429,13 +1820,17 @@
 
   function escapeFish() {
     state = 'idle';
+    if (combo >= 3) message(`鱼儿逃走啦，${combo} 连击中断了！`);
+    combo = 0;
+    perfectHook = false;
+    sfx('escape');
     button.disabled = false;
     button.textContent = '🎣 再试一次';
     progress = 0;
     $('#meter').style.width = '0%';
     $('#progressText').textContent = '鱼跑掉了';
     $('#guide').textContent = '哎呀，鱼挣脱了！再抛一次，这回盯紧浮漂。';
-    message('鱼儿逃走啦，再试一次！')
+    if (!$('#toast').textContent.includes('连击中断')) message('鱼儿逃走啦，再试一次！')
   }
 
   function updateClamUI() {
@@ -1547,7 +1942,7 @@
       return
     }
     if (!inventory[name]) return;
-    const capacity = aq.big * 10 + aq.small * 4,
+    const capacity = tankCapacity(aq),
       total = Object.values(aq.fish).reduce((a, b) => a + b, 0);
     if (!capacity) {
       message('先给当前水族馆购买玻璃缸。');
@@ -1726,6 +2121,7 @@
       message(`打开漂流宝箱，发现 ${amount} 鱼币！`)
     }
     $('#coins').textContent = coins;
+    sfx('coin');
     treasureAt = t + 28 + Math.random() * 24
   };
 
@@ -1745,7 +2141,7 @@
     };
     renderTank();
     updateAquariumUI();
-    message(`欢迎来到水族馆 #${selectedAqId}！WASD 可以在展厅里走动。`)
+    message(`欢迎来到水族馆 #${selectedAqId}！WASD 或右下角方向键可以在展厅里走动。`)
   }
   document.addEventListener('click', e => {
     const entry = e.target.closest('#aquariumList [data-enter-aq]');
@@ -1782,7 +2178,7 @@
         y: 438
       };
       $('#marketButton').textContent = '↩ 回到海湾';
-      message('欢迎来到鱼市！WASD 移动，走到店铺旁按 E 购买或选择。')
+      message('欢迎来到鱼市！WASD 移动，走到店铺旁按 E（手机用右下角方向键和 E）购买或选择。')
     } else {
       $('#marketButton').textContent = '🏪 去鱼市';
       aquariumMode = false;
@@ -1818,6 +2214,37 @@
   });
   document.addEventListener('keyup', e => {
     marketKeys[e.key.toLowerCase()] = false
+  });
+  // 触屏方向键：按住移动，松开停止
+  document.querySelectorAll('#dpad [data-dir]').forEach(b => {
+    const k = b.dataset.dir,
+      on = e => {
+        e.preventDefault();
+        marketKeys[k] = true;
+        b.classList.add('on');
+        try {
+          b.setPointerCapture(e.pointerId)
+        } catch (err) {}
+      },
+      off = () => {
+        marketKeys[k] = false;
+        b.classList.remove('on')
+      };
+    b.addEventListener('pointerdown', on);
+    b.addEventListener('pointerup', off);
+    b.addEventListener('pointercancel', off);
+    b.addEventListener('lostpointercapture', off);
+    b.addEventListener('contextmenu', e => e.preventDefault())
+  });
+  $('#dpad [data-act="e"]').addEventListener('click', () => {
+    if (marketMode) selectNearbyShop();
+    else if (aquariumMode) message('欢迎参观海湾水族馆！')
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key.toLowerCase() === 'p' && !e.target.closest('input,select,textarea')) {
+      e.preventDefault();
+      setPaused(!paused)
+    }
   });
   c.addEventListener('click', e => {
     if (!marketMode) return;
@@ -1883,7 +2310,10 @@
       totalVisitors: 0,
       nextVisitor: t + .6,
       fish: {},
-      showUntil: 0
+      showUntil: 0,
+      decor: 0,
+      bigStored: 0,
+      smallStored: 0
     };
     aquariums.push(aq);
     selectedAqId = aq.id;
@@ -1955,7 +2385,7 @@
     aq.nextVisitor = t + .4;
     aq.dayStart = t;
     updateAquariumUI();
-    message(`水族馆 #${aq.id} 开业！员工 ${aq.staff}/5；可继续为这座馆雇员。每月营业 22 天，门票 50 鱼币。`)
+    message(`水族馆 #${aq.id} 开业！员工 ${aq.staff}/5；可继续为这座馆雇员。每月营业 22 天，门票 ${ticketPrice(aq)} 鱼币。`)
   };
   $('#aquariumShow').onclick = () => {
     const aq = selectedAquarium();
@@ -1971,7 +2401,7 @@
     $('#coins').textContent = coins;
     aq.showUntil = t + 10;
     updateAquariumUI();
-    message(`水族馆 #${aq.id} 开始喂鱼秀！接下来 10 秒游客增加，每张门票收入 100 鱼币。`)
+    message(`水族馆 #${aq.id} 开始喂鱼秀！接下来 10 秒游客增加，每张门票收入 ${ticketPrice(aq)*2} 鱼币。`)
   };
   $('#derbyButton').onclick = startDerby;
   $('#digClam').onclick = digClam;
@@ -2057,6 +2487,153 @@
     $('#gearInfo').textContent = `${rodNames[rod]}鱼竿 · 蚯蚓鱼饵 ${bait} 个`;
     message('买到了 3 个蚯蚓鱼饵，下次抛竿有稀有鱼加成！')
   };
+  function buyLure(kind, cost) {
+    if (coins < cost) {
+      message(`鱼币不够，${lureNames[kind]}需要 ${cost} 币。`);
+      return
+    }
+    coins -= cost;
+    lureStock[kind] += 3;
+    lure = kind;
+    $('#coins').textContent = coins;
+    renderLurePick();
+    message(kind === 'glow' ? '买到 3 个夜光饵，已装上！夜晚用它更容易钓到传说鱼。' : '买到 3 个虾饵，已装上！稀有鱼和虾蟹更容易上钩。')
+  }
+  $('#shrimpShop').onclick = () => buyLure('shrimp', 30);
+  $('#glowShop').onclick = () => buyLure('glow', 60);
+
+  function renderLurePick() {
+    $('#shrimpCount').textContent = lureStock.shrimp;
+    $('#glowCount').textContent = lureStock.glow;
+    document.querySelectorAll('#lurePick [data-lure]').forEach(b => {
+      const k = b.dataset.lure;
+      b.classList.toggle('current', k === lure);
+      b.disabled = !!k && !lureStock[k]
+    })
+  }
+  $('#lurePick').onclick = e => {
+    const b = e.target.closest('[data-lure]');
+    if (!b || b.disabled) return;
+    lure = b.dataset.lure;
+    renderLurePick();
+    message(lure ? `已装上${lureNames[lure]}。` : '不使用特殊饵料。')
+  };
+
+  // ---------- 钓点 ----------
+  function renderSpots() {
+    $('#spotList').innerHTML = spots.map(sp => {
+      const total = species.filter(f => spotOf(f) === sp.id).length,
+        got = species.filter(f => spotOf(f) === sp.id && codex[f.n]).length;
+      return `<button type="button" data-spot="${sp.id}" class="${sp.id===spot?'current':''}">${sp.e} ${sp.name} · ${sp.id===spot?'当前钓点':unlockedSpots[sp.id]?'点击前往':'解锁 '+sp.cost+' 币'} <small>(${got}/${total})</small></button>`
+    }).join('')
+  }
+  $('#spotList').onclick = e => {
+    const b = e.target.closest('[data-spot]');
+    if (!b) return;
+    const sp = spots.find(x => x.id === b.dataset.spot);
+    if (sp.id === spot) {
+      message(`你已经在${sp.name}了。`);
+      return
+    }
+    if (state !== 'idle' || netState !== 'idle') {
+      message('先收竿、收网，再换钓点。');
+      return
+    }
+    if (marketMode || aquariumMode) {
+      message('先回到海边，再换钓点。');
+      return
+    }
+    if (!unlockedSpots[sp.id]) {
+      if (coins < sp.cost) {
+        message(`解锁${sp.name}需要 ${sp.cost} 鱼币，还差 ${sp.cost-coins}。`);
+        return
+      }
+      coins -= sp.cost;
+      unlockedSpots[sp.id] = true;
+      $('#coins').textContent = coins;
+      sfx('unlock')
+    }
+    spot = sp.id;
+    renderSpots();
+    message(`来到${sp.e} ${sp.name}！这里有不一样的鱼。`)
+  };
+
+  // ---------- 图鉴 ----------
+  function renderCodex() {
+    const total = species.length,
+      got = species.filter(f => codex[f.n]).length;
+    $('#codexCount').textContent = `${got}/${total}`;
+    $('#codex').innerHTML = spots.map(sp => `<h3>${sp.e} ${sp.name}${codexRewards[sp.id]?' · ✅ 已集齐':' · 集齐奖励 '+sp.reward+' 币'}</h3>` + species.filter(f => spotOf(f) === sp.id).map(f => codex[f.n] ? `<div title="${f.rarity}${f.night?' · 夜晚':''} · 钓到 ${codex[f.n]} 次"><b>${f.e}</b>${f.n}<br><small>×${codex[f.n]}</small></div>` : `<div class="unknown" title="${f.rarity}${f.night?' · 只在夜晚出现':''}"><b>${f.e}</b>？？？<br><small>${f.rarity}${f.night?'·🌙':''}</small></div>`).join('')).join('');
+    renderSpots()
+  }
+
+  function checkCodexRewards() {
+    for (const sp of spots) {
+      if (codexRewards[sp.id]) continue;
+      const list = species.filter(f => spotOf(f) === sp.id);
+      if (list.every(f => codex[f.n])) {
+        codexRewards[sp.id] = true;
+        coins += sp.reward;
+        $('#coins').textContent = coins;
+        sfx('unlock');
+        message(`📖 集齐${sp.name}全部 ${list.length} 种鱼！奖励 ${sp.reward} 鱼币！`);
+        renderCodex()
+      }
+    }
+  }
+
+  // ---------- 水族馆装饰 ----------
+  $('#unshelfLarge').onclick = () => shelfTank('big', false);
+  $('#unshelfSmall').onclick = () => shelfTank('small', false);
+  $('#shelfLarge').onclick = () => shelfTank('big', true);
+  $('#shelfSmall').onclick = () => shelfTank('small', true);
+  $('#buyDecor').onclick = () => {
+    const aq = selectedAquarium();
+    if (!aq) {
+      message('先买并选择一座水族馆。');
+      return
+    }
+    const nx = decorLevels[(aq.decor || 0) + 1];
+    if (!nx) {
+      message('这座馆的装饰已经是最高级。');
+      return
+    }
+    if (coins < nx.cost) {
+      message(`${nx.name}需要 ${nx.cost.toLocaleString()} 鱼币，还差 ${(nx.cost-coins).toLocaleString()}。`);
+      return
+    }
+    coins -= nx.cost;
+    aq.decor = (aq.decor || 0) + 1;
+    $('#coins').textContent = coins;
+    updateAquariumUI();
+    message(`水族馆 #${aq.id} 换上了${nx.name}！门票涨到 ${ticketPrice(aq)} 鱼币，游客来得更快。`)
+  };
+
+  // ---------- 暂停 / 静音 ----------
+  function setPaused(v) {
+    paused = v;
+    if (paused) hold = false;
+    $('#pauseOverlay').hidden = !paused;
+    $('#pauseBtn').textContent = paused ? '▶️ 继续' : '⏸ 暂停';
+    $('#pauseBtn').setAttribute('aria-pressed', String(paused))
+  }
+  $('#pauseBtn').onclick = () => setPaused(!paused);
+  $('#pauseOverlay').onclick = () => setPaused(false);
+
+  function renderMute() {
+    $('#muteBtn').textContent = muted ? '🔇 静音' : '🔊 音效';
+    $('#muteBtn').setAttribute('aria-pressed', String(muted))
+  }
+  $('#muteBtn').onclick = () => {
+    muted = !muted;
+    try {
+      localStorage.setItem('bay-fishing-muted', muted ? '1' : '0')
+    } catch (e) {}
+    renderMute();
+    unlockAudio();
+    sfx('coin')
+  };
+  renderMute();
   buttonNet.onclick = () => {
     if (netState === 'idle') {
       netState = 'throwing';
@@ -2096,7 +2673,8 @@
       questDone, questTarget, shellStock, pearlStock, marketStock, pearlMarketStock,
       achievements, treasureAt, nextTide,
       owned: shops.filter(x => x.owned).map(x => x.id),
-      clamReady: clamSpots.map(q => q.ready)
+      clamReady: clamSpots.map(q => q.ready),
+      codex, codexRewards, lure, lureStock, bestCombo, spot, unlockedSpots, lastDaily, dailyStreak
     }
   }
 
@@ -2121,7 +2699,7 @@
     const num = (x, def) => Number.isFinite(x) ? x : def;
     t = num(d.t, 0);
     catchCount = num(d.catchCount, 0);
-    coins = num(d.coins, 25000);
+    coins = num(d.coins, 500);
     aquariums = Array.isArray(d.aquariums) ? d.aquariums : [];
     selectedAqId = aquariums.some(a => a.id === d.selectedAqId) ? d.selectedAqId : (aquariums[0]?.id || 0);
     nextAqId = num(d.nextAqId, aquariums.reduce((m, a) => Math.max(m, a.id), 0) + 1);
@@ -2149,6 +2727,27 @@
     nextTide = num(d.nextTide, t + 40);
     shops.forEach(x => x.owned = Array.isArray(d.owned) && d.owned.includes(x.id));
     if (Array.isArray(d.clamReady)) clamSpots.forEach((q, i) => q.ready = d.clamReady[i] !== false);
+    aquariums.forEach(a => {
+      a.decor = Math.min(3, Math.max(0, num(a.decor, 0)));
+      a.big = Math.max(0, num(a.big, 0));
+      a.small = Math.max(0, num(a.small, 0));
+      a.bigStored = Math.max(0, num(a.bigStored, 0));
+      a.smallStored = Math.max(0, num(a.smallStored, 0))
+    });
+    codex = obj(d.codex);
+    codexRewards = obj(d.codexRewards);
+    lureStock = {
+      shrimp: num(obj(d.lureStock).shrimp, 0),
+      glow: num(obj(d.lureStock).glow, 0)
+    };
+    lure = lureNames[d.lure] && lureStock[d.lure] > 0 ? d.lure : '';
+    bestCombo = num(d.bestCombo, 0);
+    unlockedSpots = Object.assign({
+      bay: true
+    }, obj(d.unlockedSpots));
+    spot = spots.some(x => x.id === d.spot) && unlockedSpots[d.spot] ? d.spot : 'bay';
+    lastDaily = typeof d.lastDaily === 'string' ? d.lastDaily : '';
+    dailyStreak = num(d.dailyStreak, 0);
 
     // 同步界面文字
     const netNames = ['普通', '加固', '宽幅', '深海', '巨型'],
@@ -2172,11 +2771,84 @@
     return true
   }
 
+  // ---------- 存档导出 / 导入 ----------
+  $('#exportSave').onclick = () => {
+    saveGame();
+    const blob = new Blob([JSON.stringify(snapshot(), null, 2)], {
+        type: 'application/json'
+      }),
+      a = document.createElement('a'),
+      d = new Date();
+    a.href = URL.createObjectURL(blob);
+    a.download = `bay-fishing-save-${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    message('存档文件已导出。')
+  };
+  $('#importSave').onclick = () => $('#importFile').click();
+  $('#importFile').onchange = async () => {
+    const file = $('#importFile').files[0];
+    $('#importFile').value = '';
+    if (!file) return;
+    let d;
+    try {
+      d = JSON.parse(await file.text())
+    } catch (e) {
+      message('导入失败：这不是有效的存档文件。');
+      return
+    }
+    if (!d || d.v !== 1 || !Number.isFinite(d.coins)) {
+      message('导入失败：存档格式不对。');
+      return
+    }
+    if (!confirm(`导入这个存档（鱼币 ${d.coins}，渔获 ${d.catchCount||0} 条）？当前进度会被覆盖。`)) return;
+    resetting = true;
+    try {
+      localStorage.setItem(SAVE_KEY, JSON.stringify(d))
+    } catch (e) {
+      resetting = false;
+      message('导入失败：浏览器无法写入存档。');
+      return
+    }
+    location.reload()
+  };
+
+  // ---------- 每日登录奖励 ----------
+  function dateKey(d) {
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+  }
+
+  function checkDaily() {
+    const now = new Date(),
+      today = dateKey(now),
+      y = new Date(now);
+    y.setDate(now.getDate() - 1);
+    if (lastDaily !== today) {
+      dailyStreak = lastDaily === dateKey(y) ? dailyStreak + 1 : 1;
+      lastDaily = today;
+      const reward = 50 * Math.min(dailyStreak, 7);
+      coins += reward;
+      $('#coins').textContent = coins;
+      message(`📅 每日登录奖励 +${reward} 鱼币（连续 ${dailyStreak} 天）`);
+      sfx('coin');
+      saveGame()
+    }
+    $('#dailyText').textContent = `已连续登录 ${dailyStreak} 天 · 今日奖励已领取。明天再来可得 ${50*Math.min(dailyStreak+1,7)} 鱼币（最多每天 350）。`
+  }
+
   loadGame();
+  renderCodex();
+  renderLurePick();
+  checkDaily();
   setInterval(saveGame, 5000);
   window.addEventListener('pagehide', saveGame);
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) saveGame()
+    if (document.hidden) {
+      saveGame();
+      setPaused(true)
+    } else checkDaily()
   });
 
   renderMarket();
