@@ -24,6 +24,8 @@ window.__errors=[];
 addEventListener('error',e=>__errors.push(String(e.message)));
 addEventListener('unhandledrejection',e=>__errors.push('promise: '+e.reason));
 window.confirm=()=>true;
+// 可控的 document.hidden，用来模拟切到其他标签页
+window.__hidden=false;Object.defineProperty(document,'hidden',{get:()=>window.__hidden});
 // 无头模式的虚拟时间下 rAF 不推进，改用定时器驱动画面
 window.requestAnimationFrame=cb=>setTimeout(()=>cb(performance.now()),16);
 </script>"""
@@ -64,6 +66,21 @@ post = r"""<script>
     $('#marketButton').click();
     await sleep(200);
     check('回到海湾后隐藏方向键', getComputedStyle($('#dpad')).display==='none');
+    // 离开网页：默认自动暂停
+    const hide=v=>{window.__hidden=v;document.dispatchEvent(new Event('visibilitychange'))};
+    hide(true);
+    check('离开网页时默认自动暂停', !$('#pauseOverlay').hidden);
+    hide(false);
+    $('#pauseOverlay').click();
+    // 关闭自动暂停后，后台继续运行
+    $('#autoPause').checked=false;
+    $('#autoPause').dispatchEvent(new Event('change'));
+    hide(true);
+    check('关闭开关后离开网页不暂停', $('#pauseOverlay').hidden);
+    $('#cast').click();
+    check('后台仍在计时（鱼会咬钩）', await until(()=>$('#cast').textContent.includes('收竿')||$('#cast').textContent.includes('再试')));
+    hide(false);
+    check('自动暂停设置已保存', localStorage.getItem('bay-fishing-autopause')==='0');
     // 存档
     await sleep(5500);
     const save=JSON.parse(localStorage.getItem('bay-fishing-day-save-v1')||'{}');
