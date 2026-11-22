@@ -449,31 +449,375 @@
     } catch (e) {}
   }
 
-  function sfx(kind) {
-    if (muted || !actx || actx.state !== 'running') return;
-    const notes = {
-      bite: [[660, .08], [880, .12]],
-      catch: [[523, .08], [659, .08], [784, .16]],
-      perfect: [[784, .06], [1047, .06], [1319, .16]],
-      escape: [[330, .14], [220, .22]],
-      coin: [[988, .06], [1319, .12]],
-      unlock: [[523, .1], [784, .1], [1047, .22]]
-    }[kind];
-    if (!notes) return;
-    let at = actx.currentTime;
-    for (const [freq, dur] of notes) {
-      const o = actx.createOscillator(),
-        g = actx.createGain();
-      o.type = 'triangle';
-      o.frequency.value = freq;
-      g.gain.setValueAtTime(.0001, at);
-      g.gain.exponentialRampToValueAtTime(.14, at + .012);
-      g.gain.exponentialRampToValueAtTime(.0001, at + dur);
-      o.connect(g).connect(actx.destination);
-      o.start(at);
-      o.stop(at + dur + .03);
-      at += dur * .85
+  // 音量档位：1 = 大声，0.5 = 小声，0 = 静音
+  let volume = muted ? 0 : 1,
+    master = null,
+    noiseBuf = null,
+    lastSfx = {},
+    bgmOn = true,
+    bgmGain = null,
+    bgmFilter = null;
+  const BGM_VOL = .16;
+  try {
+    bgmOn = localStorage.getItem('bay-fishing-bgm') !== '0'
+  } catch (e) {}
+  try {
+    const v = localStorage.getItem('bay-fishing-volume');
+    if (v !== null && [0, .5, 1].includes(Number(v))) volume = Number(v)
+  } catch (e) {}
+
+  function audioOut() {
+    if (master) return master;
+    // 压缩器让声音更响又不爆音
+    const comp = actx.createDynamicsCompressor();
+    comp.threshold.value = -18;
+    comp.ratio.value = 4;
+    comp.connect(actx.destination);
+    master = actx.createGain();
+    master.gain.value = volume;
+    master.connect(comp);
+    // 背景音乐单独一路，音量更低，并加低通让它更柔和
+    bgmFilter = actx.createBiquadFilter();
+    bgmFilter.type = 'lowpass';
+    bgmFilter.frequency.value = 2600;
+    bgmGain = actx.createGain();
+    bgmGain.gain.value = bgmOn ? BGM_VOL : 0;
+    bgmGain.connect(bgmFilter).connect(comp);
+    noiseBuf = actx.createBuffer(1, actx.sampleRate, actx.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    return master
+  }
+
+  // 单个音：可滑音、可叠加泛音
+  function tone(freq, at, dur, o = {}) {
+    audioOut();
+    const out = o.out || master,
+      osc = actx.createOscillator(),
+      g = actx.createGain(),
+      peak = o.vol ?? .5;
+    osc.type = o.type || 'triangle';
+    osc.frequency.setValueAtTime(freq, at);
+    if (o.to) osc.frequency.exponentialRampToValueAtTime(o.to, at + dur);
+    g.gain.setValueAtTime(.0001, at);
+    g.gain.exponentialRampToValueAtTime(peak, at + (o.attack || .008));
+    g.gain.exponentialRampToValueAtTime(.0001, at + dur);
+    osc.connect(g).connect(out);
+    osc.start(at);
+    osc.stop(at + dur + .05)
+  }
+
+  // 噪声：水花、甩竿的风声
+  function noise(at, dur, o = {}) {
+    const out = audioOut(),
+      src = actx.createBufferSource(),
+      f = actx.createBiquadFilter(),
+      g = actx.createGain();
+    src.buffer = noiseBuf;
+    f.type = o.filter || 'bandpass';
+    f.frequency.setValueAtTime(o.freq || 1200, at);
+    if (o.to) f.frequency.exponentialRampToValueAtTime(o.to, at + dur);
+    f.Q.value = o.q || 1;
+    g.gain.setValueAtTime(.0001, at);
+    g.gain.exponentialRampToValueAtTime(o.vol ?? .5, at + (o.attack || .01));
+    g.gain.exponentialRampToValueAtTime(.0001, at + dur);
+    src.connect(f).connect(g).connect(out);
+    src.start(at, Math.random() * .5);
+    src.stop(at + dur + .05)
+  }
+
+  // 音阶上的和弦琶音（主音 + 高八度亮音）
+  function arp(freqs, at, step, o = {}) {
+    freqs.forEach((fq, i) => {
+      tone(fq, at + i * step, o.dur || .35, {
+        type: o.type || 'triangle',
+        vol: o.vol ?? .45
+      });
+      tone(fq * 2, at + i * step, (o.dur || .35) * .7, {
+        type: 'sine',
+        vol: (o.vol ?? .45) * .35
+      })
+    })
+  }
+
+  const SOUNDS = {
+    // 甩竿：风声 + 落水“扑通”
+    cast: at => {
+      noise(at, .28, {
+        freq: 800,
+        to: 3000,
+        vol: .25,
+        q: .7
+      });
+      tone(420, at + .3, .22, {
+        type: 'sine',
+        to: 140,
+        vol: .55
+      });
+      noise(at + .3, .25, {
+        freq: 900,
+        to: 300,
+        vol: .35,
+        filter: 'lowpass'
+      })
+    },
+    // 咬钩：最重要的提醒，响亮的双铃 + 水花，并重复一次
+    bite: at => {
+      for (const d of [0, .32]) {
+        tone(1175, at + d, .28, {
+          type: 'square',
+          vol: .22
+        });
+        tone(1568, at + d + .08, .3, {
+          type: 'triangle',
+          vol: .55
+        })
+      }
+      noise(at, .3, {
+        freq: 1500,
+        to: 500,
+        vol: .45
+      })
+    },
+    // 收线时的棘轮声
+    reel: at => {
+      tone(1800 + Math.min(100, progress) * 12, at, .035, {
+        type: 'square',
+        vol: .12
+      });
+      noise(at, .03, {
+        freq: 4000,
+        vol: .15,
+        q: 3
+      })
+    },
+    catch: at => {
+      noise(at, .45, {
+        freq: 1200,
+        to: 250,
+        vol: .55,
+        filter: 'lowpass'
+      });
+      arp([523, 659, 784, 1047], at + .05, .09, {
+        dur: .4,
+        vol: .5
+      })
+    },
+    rare: at => {
+      noise(at, .5, {
+        freq: 1500,
+        to: 300,
+        vol: .55,
+        filter: 'lowpass'
+      });
+      arp([523, 659, 784, 1047, 1319, 1568], at + .05, .08, {
+        dur: .55,
+        vol: .5
+      });
+      tone(2093, at + .55, .8, {
+        type: 'sine',
+        vol: .3
+      })
+    },
+    perfect: at => {
+      tone(880, at, .12, {
+        type: 'square',
+        vol: .2,
+        to: 1760
+      });
+      arp([1319, 1760], at + .08, .07, {
+        dur: .3,
+        vol: .45
+      })
+    },
+    escape: at => {
+      tone(392, at, .25, {
+        type: 'sawtooth',
+        vol: .25,
+        to: 300
+      });
+      tone(262, at + .22, .45, {
+        type: 'sawtooth',
+        vol: .25,
+        to: 160
+      });
+      noise(at, .35, {
+        freq: 700,
+        to: 200,
+        vol: .3,
+        filter: 'lowpass'
+      })
+    },
+    coin: at => {
+      tone(1319, at, .09, {
+        type: 'square',
+        vol: .2
+      });
+      tone(1976, at + .07, .35, {
+        type: 'square',
+        vol: .2
+      });
+      tone(1976, at + .07, .35, {
+        type: 'sine',
+        vol: .35
+      })
+    },
+    combo: at => {
+      const base = 523 * Math.pow(2, Math.min(12, combo) / 12);
+      arp([base, base * 1.26, base * 1.5], at, .06, {
+        dur: .3,
+        type: 'square',
+        vol: .22
+      })
+    },
+    splash: at => {
+      noise(at, .6, {
+        freq: 1600,
+        to: 200,
+        vol: .6,
+        filter: 'lowpass'
+      });
+      noise(at + .1, .4, {
+        freq: 3000,
+        vol: .2,
+        q: 2
+      })
+    },
+    unlock: at => {
+      arp([523, 659, 784, 1047], at, .11, {
+        dur: .5,
+        vol: .45
+      });
+      tone(1568, at + .5, .9, {
+        type: 'sine',
+        vol: .35
+      })
     }
+  };
+
+  // ---------- 背景音乐：程序生成的五声音阶小曲，白天/夜晚/鱼市/水族馆各有风格 ----------
+  const N = n => 440 * Math.pow(2, (n - 69) / 12),
+    BGM_STYLES = {
+      // chords：每两小节一个和弦（MIDI 根音 + 和弦音）；scale：旋律可用音
+      day: {
+        bpm: 92,
+        chords: [[48, 60, 64, 67], [45, 57, 60, 64], [41, 57, 60, 65], [43, 55, 59, 62]],
+        scale: [72, 74, 76, 79, 81, 84],
+        density: .55,
+        lead: 'triangle',
+        cutoff: 2800
+      },
+      night: {
+        bpm: 66,
+        chords: [[45, 57, 60, 64], [41, 57, 60, 65], [48, 55, 60, 64], [43, 55, 59, 62]],
+        scale: [69, 72, 74, 76, 79],
+        density: .3,
+        lead: 'sine',
+        cutoff: 1500
+      },
+      market: {
+        bpm: 112,
+        chords: [[43, 55, 59, 62], [48, 60, 64, 67], [45, 57, 60, 64], [50, 57, 62, 66]],
+        scale: [74, 76, 79, 81, 83, 86],
+        density: .7,
+        lead: 'square',
+        cutoff: 2200
+      },
+      aquarium: {
+        bpm: 72,
+        chords: [[41, 60, 65, 69], [48, 60, 64, 67], [45, 60, 64, 69], [43, 59, 62, 67]],
+        scale: [77, 79, 81, 84, 86, 88],
+        density: .38,
+        lead: 'sine',
+        cutoff: 3400
+      }
+    };
+  let bgmStep = 0,
+    bgmNext = 0,
+    bgmSeed = 1;
+
+  function bgmStyleName() {
+    return aquariumMode ? 'aquarium' : marketMode ? 'market' : isNight() ? 'night' : 'day'
+  }
+
+  function rand() {
+    bgmSeed = (bgmSeed * 16807) % 2147483647;
+    return bgmSeed / 2147483647
+  }
+
+  function bgmTick() {
+    if (!actx || actx.state !== 'running' || !bgmOn || paused || document.hidden) {
+      if (actx) bgmNext = actx.currentTime + .1;
+      return
+    }
+    audioOut();
+    const st = BGM_STYLES[bgmStyleName()],
+      eighth = 60 / st.bpm / 2;
+    bgmFilter.frequency.setTargetAtTime(st.cutoff, actx.currentTime, .5);
+    if (bgmNext < actx.currentTime) bgmNext = actx.currentTime + .05;
+    while (bgmNext < actx.currentTime + .4) {
+      const at = bgmNext,
+        inBar = bgmStep % 8,
+        bar = Math.floor(bgmStep / 8),
+        chord = st.chords[Math.floor(bar / 2) % st.chords.length];
+      // 每小节开头：长音铺底
+      if (inBar === 0) {
+        if (bar % 4 === 0) bgmSeed = 7 + Math.floor(bar / 4) % 4; // 每 4 小节旋律重复一次，听起来像曲子
+        chord.slice(1).forEach(n => tone(N(n), at, eighth * 8.5, {
+          type: 'sine',
+          vol: .12,
+          attack: .25,
+          out: bgmGain
+        }))
+      }
+      // 低音：1、5 拍
+      if (inBar === 0 || inBar === 4) tone(N(chord[0]), at, eighth * 3.5, {
+        type: 'triangle',
+        vol: .35,
+        attack: .02,
+        out: bgmGain
+      });
+      // 分解和弦：轻轻的拨弦
+      if (inBar % 2 === 1) tone(N(chord[1 + (inBar >> 1) % 3] + 12), at, eighth * 1.6, {
+        type: 'sine',
+        vol: .1,
+        out: bgmGain
+      });
+      // 旋律
+      if (rand() < st.density) {
+        const note = st.scale[Math.floor(rand() * st.scale.length)];
+        tone(N(note), at, eighth * (rand() < .3 ? 3 : 1.8), {
+          type: st.lead,
+          vol: st.lead === 'square' ? .07 : .18,
+          attack: .015,
+          out: bgmGain
+        })
+      }
+      bgmStep++;
+      bgmNext += eighth
+    }
+  }
+  setInterval(bgmTick, 100);
+
+  function setBgm(on) {
+    bgmOn = on;
+    try {
+      localStorage.setItem('bay-fishing-bgm', on ? '1' : '0')
+    } catch (e) {}
+    if (bgmGain) bgmGain.gain.setTargetAtTime(on ? BGM_VOL : 0, actx.currentTime, .3);
+    $('#bgmBtn').textContent = on ? '🎵 音乐' : '🎵 音乐关';
+    $('#bgmBtn').setAttribute('aria-pressed', String(!on))
+  }
+
+  // throttle：同一种声音最短间隔（秒），避免顾客成群买东西时刷屏
+  function sfx(kind, throttle = 0) {
+    if (!volume || !actx || actx.state !== 'running' || !SOUNDS[kind]) return;
+    const now = actx.currentTime;
+    if (throttle && now - (lastSfx[kind] || -9) < throttle) return;
+    lastSfx[kind] = now;
+    try {
+      SOUNDS[kind](now + .01)
+    } catch (e) {}
   }
   document.addEventListener('pointerdown', unlockAudio);
   document.addEventListener('keydown', unlockAudio);
@@ -532,7 +876,8 @@
         updateClamUI()
       }
       $('#shopStatus').textContent = `已拥有：${shops.filter(x=>x.owned).map(x=>x.name).join('、')}。走到鲜鱼铺按 E 可上架鱼。`;
-      message(`🎉 买下了${shop.name}！`)
+      message(`🎉 买下了${shop.name}！`);
+      sfx('unlock')
     } else {
       message(`这是你的${shop.name}。${shop.id==='fish'?'在卖鱼摊把鱼上架，顾客就会来买。':'店铺已开张！'}`)
     }
@@ -993,7 +1338,8 @@
             $('#coins').textContent = coins;
             renderMarket();
             updateClamUI();
-            message(`${q.vip?'🌟珍品收藏家':'顾客'}在${shop.name}买走${f.n}，你赚到 ${paid} 鱼币！`)
+            message(`${q.vip?'🌟珍品收藏家':'顾客'}在${shop.name}买走${f.n}，你赚到 ${paid} 鱼币！`);
+            sfx('coin', .25)
           }
           customers.splice(i, 1)
         }
@@ -1421,6 +1767,7 @@
         buttonNet.disabled = false;
         refreshCatchUI();
         splash(650, 355, 2);
+        sfx(n ? 'catch' : 'escape');
         message(`收网成功！一网捕获 ${n} 条鱼！`)
       }
     }
@@ -1641,7 +1988,10 @@
       message('咬钩了！快点「收竿」！')
     }
     if (state === 'reel') {
-      if (hold) progress = Math.min(100, progress + (31 + rod * 8) * dt);
+      if (hold) {
+        progress = Math.min(100, progress + (31 + rod * 8) * dt);
+        sfx('reel', .09)
+      }
       else progress = Math.max(0, progress - 13 * dt);
       $('#meter').style.width = progress + '%';
       if (progress >= 100) {
@@ -1673,6 +2023,7 @@
       button.textContent = '⏳ 等鱼上钩…';
       button.disabled = true;
       message('浮漂落水了，安静等一等…');
+      sfx('cast');
       biteAt = t + (bait ? 1.5 : 2.8) + Math.random() * (bait ? 3 : 5.3);
       if (bait > 0) $('#gearInfo').textContent = `${rodNames[rod]}鱼竿 · 蚯蚓鱼饵 ${bait} 个（本竿生效）`;
       return
@@ -1754,7 +2105,8 @@
       if (catchCount >= g.n && !achievements[g.n]) {
         achievements[g.n] = true;
         coins += g.reward;
-        message(`🏆 解锁成就「${g.label}」！奖励 ${g.reward} 鱼币。`)
+        message(`🏆 解锁成就「${g.label}」！奖励 ${g.reward} 鱼币。`);
+        sfx('unlock')
       } const next = goals.find(g => !achievements[g.n]);
     $('#achievements').textContent = next ? `已钓 ${catchCount} 条 · 再钓 ${Math.max(0,next.n-catchCount)} 条解锁「${next.label}」，奖励 ${next.reward} 鱼币。` : '全部钓鱼成就已解锁！';
     $('#achievementMeter').style.width = (next ? Math.min(100, catchCount / next.n * 100) : 100) + '%';
@@ -1807,7 +2159,8 @@
     $('#progressText').textContent = (perfectHook ? '✨ 完美！' : '钓上来了！') + (combo >= 2 ? ` 连击 ${combo}` : '');
     if (bonusText) message($('#toast').textContent + bonusText);
     perfectHook = false;
-    sfx('catch');
+    sfx(fish.rarity === '传说' || fish.rarity === '稀有' ? 'rare' : 'catch');
+    if (combo >= 3) setTimeout(() => sfx('combo'), 380);
     $('#meter').style.width = '100%';
     refreshCatchUI();
     setTimeout(() => {
@@ -1857,6 +2210,7 @@
     updateClamUI();
     splash(spot.x, spot.y, .55);
     message(`挖到一只${spot.type}！打开它找找珍珠吧。`);
+    sfx('splash');
     setTimeout(() => {
       spot.ready = true;
       updateClamUI()
@@ -1872,7 +2226,8 @@
       const pearlName = type.drops[Math.floor(Math.random() * type.drops.length)];
       pearlStock[pearlName] = (pearlStock[pearlName] || 0) + 1;
       splash(350, 410, 1.1);
-      message(`✨ ${type.n}里开出了${pearlName}！`)
+      message(`✨ ${type.n}里开出了${pearlName}！`);
+      sfx('rare')
     } else message(`${type.n}打开了，里面没有珍珠，再挖一个试试。`);
     updateClamUI()
   }
@@ -2621,19 +2976,26 @@
   $('#pauseOverlay').onclick = () => setPaused(false);
 
   function renderMute() {
-    $('#muteBtn').textContent = muted ? '🔇 静音' : '🔊 音效';
-    $('#muteBtn').setAttribute('aria-pressed', String(muted))
+    $('#muteBtn').textContent = volume === 1 ? '🔊 大声' : volume ? '🔉 小声' : '🔇 静音';
+    $('#muteBtn').setAttribute('aria-label', `音效音量：${$('#muteBtn').textContent.slice(2)}，点击切换`);
+    $('#muteBtn').setAttribute('aria-pressed', String(!volume))
   }
   $('#muteBtn').onclick = () => {
-    muted = !muted;
+    volume = volume === 1 ? .5 : volume ? 0 : 1;
     try {
-      localStorage.setItem('bay-fishing-muted', muted ? '1' : '0')
+      localStorage.setItem('bay-fishing-volume', String(volume))
     } catch (e) {}
-    renderMute();
     unlockAudio();
+    if (master) master.gain.setValueAtTime(volume, actx.currentTime);
+    renderMute();
     sfx('coin')
   };
   renderMute();
+  $('#bgmBtn').onclick = () => {
+    unlockAudio();
+    setBgm(!bgmOn)
+  };
+  setBgm(bgmOn);
   buttonNet.onclick = () => {
     if (netState === 'idle') {
       netState = 'throwing';
@@ -2644,13 +3006,15 @@
       buttonNet.disabled = true;
       buttonNet.textContent = '🕸️ 鱼网正在撒开…';
       splash(530, 340, 1.5);
-      message('渔网撒进湖里了，等鱼群自己游进网中…')
+      message('渔网撒进湖里了，等鱼群自己游进网中…');
+      sfx('splash')
     } else if (netState === 'full') {
       netState = 'hauling';
       netStart = t;
       buttonNet.disabled = true;
       buttonNet.textContent = '🌊 正在收网…';
-      message('收网中！网里的鱼一条也跑不掉。')
+      message('收网中！网里的鱼一条也跑不掉。');
+      sfx('splash')
     }
   };
   $('#restart').onclick = () => {
