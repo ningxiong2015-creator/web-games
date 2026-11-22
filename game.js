@@ -1,11 +1,17 @@
 (() => {
   const c = document.querySelector('#lake'),
-    ctx = c.getContext('2d'),
+    realCtx = c.getContext('2d'),
     $ = s => document.querySelector(s),
     button = $('#cast'),
     buttonNet = $('#netButton'),
     tankCanvas = $('#tank'),
-    tankCtx = $('#tank').getContext('2d');
+    realTankCtx = $('#tank').getContext('2d');
+  // 后台模拟时把画面画到 1×1 的小画布上，省掉真正的渲染开销
+  const blankCtx = document.createElement('canvas').getContext('2d'),
+    blankCtx2 = document.createElement('canvas').getContext('2d');
+  blankCtx.canvas.width = blankCtx.canvas.height = blankCtx2.canvas.width = blankCtx2.canvas.height = 1;
+  let ctx = realCtx,
+    tankCtx = realTankCtx;
   let state = 'idle',
     bob = {
       x: 555,
@@ -811,7 +817,7 @@
 
   // throttle：同一种声音最短间隔（秒），避免顾客成群买东西时刷屏
   function sfx(kind, throttle = 0) {
-    if (!volume || !actx || actx.state !== 'running' || !SOUNDS[kind]) return;
+    if (!volume || document.hidden || !actx || actx.state !== 'running' || !SOUNDS[kind]) return;
     const now = actx.currentTime;
     if (throttle && now - (lastSfx[kind] || -9) < throttle) return;
     lastSfx[kind] = now;
@@ -1496,13 +1502,13 @@
     renderLurePick()
   }
 
-  function draw(now) {
+  // 一帧游戏逻辑 + 画面；fixedDt 用于后台模拟
+  function frame(now, fixedDt) {
     if (paused) {
       last = now;
-      requestAnimationFrame(draw);
       return
     }
-    const dt = Math.min(.05, (now - last) / 1000);
+    const dt = fixedDt ?? Math.min(.05, (now - last) / 1000);
     last = now;
     t += dt;
     updateHud();
@@ -1513,7 +1519,6 @@
     drawTank();
     if (aquariumMode) {
       drawAquarium(dt);
-      requestAnimationFrame(draw);
       return
     }
     if (!tideActive && t >= nextTide) {
@@ -1528,7 +1533,6 @@
     updateMarketCustomers(dt);
     if (marketMode) {
       drawMarket(dt);
-      requestAnimationFrame(draw);
       return
     }
     // sky and distant hills
@@ -2009,8 +2013,61 @@
       ctx.textAlign = 'center';
       ctx.fillText(`📍 ${sp.e} ${sp.name}`, 725, 481)
     }
+  }
+
+  function draw(now) {
+    if (!document.hidden) frame(now);
     requestAnimationFrame(draw)
   }
+
+  // ---------- 后台运行 ----------
+  // 浏览器会在标签页隐藏时停掉 requestAnimationFrame、把定时器降到约每秒一次甚至每分钟一次，
+  // 所以在后台用定时器按实际流逝时间补算游戏逻辑（只算逻辑，不真正渲染）。
+  const BG_STEP = .1,
+    BG_MAX_SECONDS = 600;
+  let autoPause = true;
+  try {
+    autoPause = localStorage.getItem('bay-fishing-autopause') !== '0'
+  } catch (e) {}
+
+  function simulateTo(now) {
+    if (paused) {
+      last = now;
+      return
+    }
+    let elapsed = (now - last) / 1000;
+    if (!(elapsed > 0)) return;
+    // 超过上限的时间直接跳过，避免切回来时卡住太久
+    elapsed = Math.min(elapsed, BG_MAX_SECONDS);
+    const steps = Math.ceil(elapsed / BG_STEP),
+      dt = elapsed / steps;
+    ctx = blankCtx;
+    tankCtx = blankCtx2;
+    try {
+      for (let i = 0; i < steps && !paused; i++) frame(now, dt)
+    } finally {
+      ctx = realCtx;
+      tankCtx = realTankCtx;
+      last = now
+    }
+  }
+  setInterval(() => {
+    if (document.hidden && !autoPause) simulateTo(performance.now())
+  }, 1000);
+
+  function renderAutoPause() {
+    $('#autoPause').checked = autoPause;
+    $('#autoPauseHint').textContent = autoPause ? '切到其他标签页或最小化时，游戏自动暂停。' : '离开网页时游戏继续运行：员工照常工作和领工资，水族馆照常收门票。单次离开最多补算 10 分钟。'
+  }
+  $('#autoPause').onchange = () => {
+    autoPause = $('#autoPause').checked;
+    try {
+      localStorage.setItem('bay-fishing-autopause', autoPause ? '1' : '0')
+    } catch (e) {}
+    renderAutoPause();
+    message(autoPause ? '已开启：离开网页时自动暂停。' : '已关闭自动暂停：离开网页时游戏继续运行。')
+  };
+  renderAutoPause();
 
   function message(s) {
     $('#toast').textContent = s
@@ -3211,8 +3268,13 @@
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
       saveGame();
-      setPaused(true)
-    } else checkDaily()
+      if (autoPause) setPaused(true);
+      else last = performance.now()
+    } else {
+      // 补上最后一次后台定时器之后的时间
+      if (!autoPause) simulateTo(performance.now());
+      checkDaily()
+    }
   });
 
   renderMarket();
