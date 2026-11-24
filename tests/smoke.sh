@@ -1,5 +1,5 @@
 #!/bin/sh
-# 冒烟测试：在无头 Chrome 中加载游戏并模拟基本操作，检查没有脚本报错。
+# 冒烟测试：在无头 Chrome（或 Chromium）中加载游戏并模拟基本操作，检查没有脚本报错。
 # 用法：./tests/smoke.sh
 set -eu
 
@@ -81,10 +81,16 @@ post = r"""<script>
     check('后台仍在计时（鱼会咬钩）', await until(()=>$('#cast').textContent.includes('收竿')||$('#cast').textContent.includes('再试')));
     hide(false);
     check('自动暂停设置已保存', localStorage.getItem('bay-fishing-autopause')==='0');
+    // 新功能界面
+    check('每日委托生成 3 个', $('#questList').querySelectorAll('.questrow').length===3);
+    check('统计卡片已渲染', $('#stats').children.length>=10);
+    check('鱼王挑战已渲染', $('#bossText').textContent.includes('鱼王'));
+    check('料理菜单已渲染', $('#recipes').querySelectorAll('[data-cook]').length===4);
     // 存档
     await sleep(5500);
     const save=JSON.parse(localStorage.getItem('bay-fishing-day-save-v1')||'{}');
     check('自动存档包含图鉴和钓点', save.spot==='river' && Object.keys(save.codex||{}).length===1);
+    check('自动存档包含尺寸纪录和委托', Object.keys(save.records||{}).length===1 && save.dailyQuests?.list?.length===3);
   }catch(e){__errors.push('test: '+e.message)}
   check('没有脚本错误', __errors.length===0);
   document.body.dataset.smoke=JSON.stringify({log,errors:__errors});
