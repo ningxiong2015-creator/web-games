@@ -49,8 +49,6 @@
     rod = 0,
     bait = 0,
     netLevel = 0,
-    questDone = false,
-    questTarget = 3,
     weather = '晴朗',
     weatherAt = 0,
     last = performance.now(),
@@ -188,36 +186,42 @@
     rodCosts = [0, 20, 60, 140, 280, 500];
   const species = [{
     n: '蓝鳃太阳鱼',
+    cm: 18,
     e: '🐟',
     v: 3,
     c: '#6ab8c5',
     rarity: '常见'
   }, {
     n: '金鳟鱼',
+    cm: 40,
     e: '🐠',
     v: 8,
     c: '#efb84e',
     rarity: '普通'
   }, {
     n: '胖鲤鱼',
+    cm: 50,
     e: '🐡',
     v: 5,
     c: '#ed9372',
     rarity: '常见'
   }, {
     n: '银鲑',
+    cm: 70,
     e: '🐟',
     v: 12,
     c: '#c6dbe1',
     rarity: '少见'
   }, {
     n: '小龙虾',
+    cm: 12,
     e: '🦞',
     v: 7,
     c: '#e26853',
     rarity: '普通'
   }, {
     n: '月光锦鲤',
+    cm: 60,
     e: '🐠',
     v: 25,
     c: '#bc8bdd',
@@ -225,54 +229,63 @@
     night: true
   }, {
     n: '河豚',
+    cm: 25,
     e: '🐡',
     v: 18,
     c: '#f3ad61',
     rarity: '少见'
   }, {
     n: '彩虹鳟',
+    cm: 55,
     e: '🐟',
     v: 32,
     c: '#9a80d0',
     rarity: '稀有'
   }, {
     n: '黄金鲤鱼',
+    cm: 80,
     e: '🐠',
     v: 45,
     c: '#f2c949',
     rarity: '传说'
   }, {
     n: '珍珠蚌',
+    cm: 15,
     e: '🦪',
     v: 60,
     c: '#e3c8da',
     rarity: '传说'
   }, {
     n: '小鲨鱼',
+    cm: 120,
     e: '🦈',
     v: 95,
     c: '#718b9a',
     rarity: '稀有'
   }, {
     n: '海豚',
+    cm: 220,
     e: '🐬',
     v: 120,
     c: '#72c8d4',
     rarity: '稀有'
   }, {
     n: '蓝鲸',
+    cm: 2500,
     e: '🐋',
     v: 220,
     c: '#517cae',
     rarity: '传说'
   }, {
     n: '水母',
+    cm: 30,
     e: '🪼',
     v: 70,
     c: '#c78de2',
     rarity: '少见'
   }, {
     n: '灯笼鱼',
+    cm: 10,
     e: '🐟',
     v: 15,
     c: '#f6e27a',
@@ -281,6 +294,7 @@
   }, {
     // 河口
     n: '河虾',
+    cm: 8,
     e: '🦐',
     v: 4,
     c: '#f0a08a',
@@ -288,6 +302,7 @@
     spot: 'river'
   }, {
     n: '鲈鱼',
+    cm: 45,
     e: '🐟',
     v: 9,
     c: '#9fb3a0',
@@ -295,6 +310,7 @@
     spot: 'river'
   }, {
     n: '青蟹',
+    cm: 20,
     e: '🦀',
     v: 16,
     c: '#5f8f7a',
@@ -302,6 +318,7 @@
     spot: 'river'
   }, {
     n: '鳜鱼',
+    cm: 40,
     e: '🐠',
     v: 36,
     c: '#c9a35a',
@@ -309,6 +326,7 @@
     spot: 'river'
   }, {
     n: '白鳝',
+    cm: 90,
     e: '🐍',
     v: 48,
     c: '#d8d8c8',
@@ -317,6 +335,7 @@
     night: true
   }, {
     n: '中华鲟',
+    cm: 300,
     e: '🐟',
     v: 260,
     c: '#6c7f8e',
@@ -325,6 +344,7 @@
   }, {
     // 深海
     n: '带鱼',
+    cm: 100,
     e: '🐟',
     v: 10,
     c: '#d9e4ea',
@@ -332,6 +352,7 @@
     spot: 'deep'
   }, {
     n: '鱿鱼',
+    cm: 40,
     e: '🦑',
     v: 14,
     c: '#e7a3a0',
@@ -339,6 +360,7 @@
     spot: 'deep'
   }, {
     n: '海星',
+    cm: 25,
     e: '⭐',
     v: 20,
     c: '#f2b552',
@@ -346,6 +368,7 @@
     spot: 'deep'
   }, {
     n: '旗鱼',
+    cm: 250,
     e: '🐟',
     v: 85,
     c: '#4f7fb5',
@@ -353,6 +376,7 @@
     spot: 'deep'
   }, {
     n: '鮟鱇鱼',
+    cm: 80,
     e: '🐡',
     v: 110,
     c: '#6b5d52',
@@ -361,6 +385,7 @@
     night: true
   }, {
     n: '大王乌贼',
+    cm: 1000,
     e: '🦑',
     v: 300,
     c: '#b8576a',
@@ -368,6 +393,7 @@
     spot: 'deep'
   }, {
     n: '皇带鱼',
+    cm: 800,
     e: '🐉',
     v: 380,
     c: '#c9c6e8',
@@ -438,6 +464,62 @@
     muted = localStorage.getItem('bay-fishing-muted') === '1'
   } catch (e) {}
   const sceneEl = document.querySelector('.scene');
+  const speciesByName = new Map(species.map(f => [f.n, f])),
+    fishInfo = name => speciesByName.get(name);
+  // 鱼的尺寸纪录、每日委托、统计
+  let records = {},
+    dailyQuests = {
+      date: '',
+      list: [],
+      allDone: false
+    },
+    stats = {
+      perfect: 0,
+      pearls: 0,
+      sold: 0,
+      quests: 0,
+      cooked: 0,
+      bossWins: 0
+    },
+    // 料理增益：键为效果，值为失效的游戏时间
+    buffs = {},
+    // 鱼王挑战
+    boss = null,
+    bossArmed = '',
+    bossReady = {},
+    bossWins = {};
+
+  // ---------- 界面批量刷新 ----------
+  // 同一轮逻辑里多次调用的列表渲染合并成一次（例如后台补算或顾客一次买走很多东西）
+  const pendingRenders = new Set();
+
+  function later(fn) {
+    if (!pendingRenders.size) queueMicrotask(flushRenders);
+    pendingRenders.add(fn)
+  }
+
+  function flushRenders() {
+    const fns = [...pendingRenders];
+    pendingRenders.clear();
+    fns.forEach(fn => fn())
+  }
+
+  // 内容没变就不重建，避免点击过程中按钮被替换
+  function setHTML(el, html) {
+    if (el.dataset.html === html) return;
+    el.dataset.html = html;
+    el.innerHTML = html
+  }
+
+  function fmtSize(cm) {
+    return cm >= 100 ? `${(cm / 100).toFixed(cm >= 1000 ? 1 : 2)} 米` : `${cm.toFixed(1)} 厘米`
+  }
+
+  function rollSize(f, perfect) {
+    // 完美收竿更容易钓到大个的
+    const u = perfect ? Math.max(Math.random(), Math.random()) : Math.random();
+    return Math.round(f.cm * (.65 + u * .7) * 10) / 10
+  }
 
   function isNight() {
     return (t % 120) > 80
@@ -905,7 +987,19 @@
     renderMarket()
   }
 
+  // 蛤蜊按游戏时间重新长出：暂停时不长，存档后也能接着长
+  function takeClamSpot(q) {
+    q.ready = false;
+    q.readyAt = t + 12
+  }
+
   function updateWorkers() {
+    if (clamSpots.some(q => !q.ready && t >= q.readyAt)) {
+      clamSpots.forEach(q => {
+        if (!q.ready && t >= q.readyAt) q.ready = true
+      });
+      updateClamUI()
+    }
     const employees = (autoFisher ? 2 : 0) + (autoSeller ? 1 : 0) + (autoClamWorker ? 1 : 0);
     if (employees && !nextPayrollAt) nextPayrollAt = t + 30 * 30;
     if (autoFisher && t >= autoFishAt) {
@@ -918,7 +1012,7 @@
       autoSellAt = t + 3.2;
       const shop = shops.find(x => x.id === 'fish'),
         name = Object.keys(inventory).find(k => inventory[k] > 0),
-        f = species.find(x => x.n === name);
+        f = fishInfo(name);
       if (name && shop?.owned) {
         inventory[name]--;
         if (!inventory[name]) delete inventory[name];
@@ -932,12 +1026,9 @@
       autoClamAt = t + 12;
       const spot = clamSpots.find(q => q.ready);
       if (spot) {
-        spot.ready = false;
-        setTimeout(() => {
-          spot.ready = true;
-          updateClamUI()
-        }, 12000);
+        takeClamSpot(spot);
         if (Math.random() < clamTypes.find(q => q.n === spot.type).rate) {
+          stats.pearls++;
           const shell = clamTypes.find(q => q.n === spot.type),
             pearl = shell.drops[Math.floor(Math.random() * shell.drops.length)];
           if (shops.find(q => q.id === 'pearl').owned) {
@@ -978,7 +1069,10 @@
     }
     if (t - lastAqUI >= .5 || t < lastAqUI) {
       lastAqUI = t;
-      updateAquariumUI()
+      updateAquariumUI();
+      renderBuffs();
+      renderBoss();
+      later(renderStats)
     }
   }
 
@@ -1059,7 +1153,7 @@
       for (let k = 0; k < 3; k++) {
         ctx.font = `${18+k*3}px sans-serif`;
         const name = names.length ? names[(i + k) % names.length] : null,
-          fish = name ? species.find(f => f.n === name) : null;
+          fish = name ? fishInfo(name) : null;
         ctx.fillText(fish ? fish.e : ['🐟', '🐠', '🪼'][k], x + 25 + ((t * 15 + k * 47 + i * 13) % (w - 45)), y + 42 + k * 29 + Math.sin(t * 2 + k + i) * 5)
       }
     }
@@ -1352,7 +1446,7 @@
           if (key) {
             stock[key]--;
             if (!stock[key]) delete stock[key];
-            const f = q.shopId === 'pearl' ? pearlTypes.find(z => z.n === key) : species.find(z => z.n === key),
+            const f = q.shopId === 'pearl' ? pearlTypes.find(z => z.n === key) : fishInfo(key),
               premium = q.vip ? (q.shopId === 'pearl' ? (key === '金珍珠' || key === '黑珍珠' ? 2.5 : 1.6) : (f.rarity === '传说' ? 3 : f.rarity === '稀有' ? 2.2 : 1.5)) : 1.25,
               paid = Math.round(f.v * premium);
             coins += paid;
@@ -1360,7 +1454,9 @@
             renderMarket();
             updateClamUI();
             message(`${q.vip?'🌟珍品收藏家':'顾客'}在${shop.name}买走${f.n}，你赚到 ${paid} 鱼币！`);
-            sfx('coin', .25)
+            sfx('coin', .25);
+            stats.sold++;
+            questProgress('sell')
           }
           customers.splice(i, 1)
         }
@@ -1422,7 +1518,7 @@
       if (sh.owned && (sh.id === 'fish' || sh.id === 'pearl')) {
         const stock = sh.id === 'fish' ? marketStock : pearlMarketStock,
           display = sh.id === 'fish' ? Object.entries(stock).flatMap(([name, n]) => {
-            const f = species.find(q => q.n === name);
+            const f = fishInfo(name);
             return f ? Array(Math.min(n, 5)).fill(f) : []
           }) : Object.entries(stock).flatMap(([name, n]) => {
             const f = pearlTypes.find(q => q.n === name);
@@ -2604,7 +2700,8 @@
       }
       if (netState === 'hauling' && t - netStart > 1.25) {
         netFish.forEach(f => awardFish(f, false));
-        const n = netFish.length;
+        const n = netFish.length,
+          rares = netFish.filter(f => f.rarity === '传说' || f.rarity === '稀有').length;
         netFish = [];
         netState = 'idle';
         buttonNet.textContent = '🕸️ 抛出渔网';
@@ -2612,7 +2709,9 @@
         refreshCatchUI();
         splash(650, 355, 2);
         sfx(n ? 'catch' : 'escape');
-        message(`收网成功！一网捕获 ${n} 条鱼！`)
+        message(`收网成功！一网捕获 ${n} 条鱼！`);
+        questProgress('net');
+        if (rares) questProgress('rare', rares)
       }
     }
     // fisherman
@@ -2653,7 +2752,7 @@
     // bobber and line
     if (state !== 'idle') {
       bob.x = 555 + Math.sin(t * 2) * 2;
-      bob.y = 280 + Math.sin(t * 3) * 3 + (state === 'bite' ? Math.sin(t * 18) * 5 : 0);
+      bob.y = 280 + Math.sin(t * 3) * 3 + (state === 'bite' || (boss && t < boss.thrashUntil) ? Math.sin(t * 18) * (boss ? 9 : 5) : 0);
       ctx.strokeStyle = '#f4ead2';
       ctx.lineWidth = 1.4;
       ctx.beginPath();
@@ -2732,13 +2831,14 @@
     ctx.globalAlpha = 1;
     if (jump) {
       const age = t - jump.start;
-      if (age < 1.2) {
-        const u = age / 1.2;
-        const fy = 276 - Math.sin(u * Math.PI) * 102;
+      const dur = jump.big ? 1.8 : 1.2;
+      if (age < dur) {
+        const u = age / dur;
+        const fy = 276 - Math.sin(u * Math.PI) * (jump.big ? 150 : 102);
         ctx.save();
         ctx.translate(555, fy);
         ctx.rotate(Math.sin(u * Math.PI * 2) * .5);
-        ctx.font = '48px sans-serif';
+        ctx.font = jump.big ? '110px sans-serif' : '48px sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(jump.emoji, 0, 0);
         ctx.restore()
@@ -2785,9 +2885,10 @@
       sfx('bite');
       message('咬钩了！快点「收竿」！')
     }
-    if (state === 'reel') {
+    if (state === 'reel' && boss) updateBossReel(dt);
+    else if (state === 'reel') {
       if (hold) {
-        progress = Math.min(100, progress + (31 + rod * 8) * dt);
+        progress = Math.min(100, progress + (31 + rod * 8) * dt * (buffActive('reel') ? 1.4 : 1));
         sfx('reel', .09)
       }
       else progress = Math.max(0, progress - 13 * dt);
@@ -2809,9 +2910,25 @@
     }
   }
 
+  // 画布滚出屏幕时只跑逻辑，画到 1×1 的小画布上
+  let sceneVisible = true,
+    tankVisible = true;
+  if ('IntersectionObserver' in window) {
+    const io = new IntersectionObserver(es => es.forEach(e => {
+      if (e.target === c) sceneVisible = e.isIntersecting;
+      else tankVisible = e.isIntersecting
+    }));
+    io.observe(c);
+    io.observe(tankCanvas)
+  }
+
   function draw(now) {
     try {
-      if (!document.hidden) frame(now)
+      if (!document.hidden) {
+        if (!sceneVisible) ctx = blankCtx;
+        if (!tankVisible) tankCtx = blankCtx2;
+        frame(now)
+      }
     } finally {
       ctx = realCtx;
       tankCtx = realTankCtx
@@ -2880,8 +2997,8 @@
       button.disabled = true;
       message('浮漂落水了，安静等一等…');
       sfx('cast');
-      biteAt = t + (bait ? 1.5 : 2.8) + Math.random() * (bait ? 3 : 5.3);
-      if (bait > 0) $('#gearInfo').textContent = `${rodNames[rod]}鱼竿 · 蚯蚓鱼饵 ${bait} 个（本竿生效）`;
+      biteAt = t + ((bossArmed ? 3 : bait ? 1.5 : 2.8) + Math.random() * (bossArmed ? 2 : bait ? 3 : 5.3)) * (buffActive('bite') ? .6 : 1);
+      if (bait > 0 && !bossArmed) $('#gearInfo').textContent = `${rodNames[rod]}鱼竿 · 蚯蚓鱼饵 ${bait} 个（本竿生效）`;
       return
     }
     if (state === 'bite') {
@@ -2893,6 +3010,7 @@
       $('#progressText').textContent = perfectHook ? '✨ 完美收竿！按住收线' : '按住收线';
       if (perfectHook) sfx('perfect');
       message(perfectHook ? '✨ 完美收竿！稀有鱼概率提升，按住收线！' : '鱼咬钩了！按住按钮或空格收线，别让进度掉光！');
+      if (bossArmed) startBossFight();
       return
     }
   }
@@ -2902,7 +3020,7 @@
     const night = isNight(),
       useLure = opts.rod && lure && lureStock[lure] > 0 ? lure : '',
       lureBonus = useLure === 'shrimp' ? .08 : useLure === 'glow' ? (night ? .2 : .03) : 0,
-      rareChance = .04 + rod * .03 + (bait ? .13 : 0) + lureBonus + (opts.rod && opts.perfect ? .1 : 0) + (WEATHERS[weather]?.bonus || 0) + (tideActive ? .12 : 0),
+      rareChance = .04 + rod * .03 + (bait ? .13 : 0) + lureBonus + (opts.rod && opts.perfect ? .1 : 0) + (opts.rod && buffActive('luck') ? .1 : 0) + (WEATHERS[weather]?.bonus || 0) + (tideActive ? .12 : 0),
       legendShare = useLure === 'glow' && night ? .3 : .16,
       roll = Math.random(),
       pool = species.filter(f => spotOf(f) === spot && (!f.night || night)),
@@ -2922,11 +3040,17 @@
     return pick(regular.length ? regular : pool)
   }
 
-  function awardFish(f, show = true) {
+  function awardFish(f, show = true, perfect = false) {
     inventory[f.n] = (inventory[f.n] || 0) + 1;
     catchCount++;
-    const firstTime = !codex[f.n];
+    const firstTime = !codex[f.n],
+      size = rollSize(f, perfect),
+      record = size > (records[f.n] || 0);
     codex[f.n] = (codex[f.n] || 0) + 1;
+    if (record) {
+      records[f.n] = size;
+      renderCodex()
+    }
     if (firstTime) {
       renderCodex();
       checkCodexRewards();
@@ -2938,8 +3062,8 @@
       updateDerbyUI()
     }
     if (show) {
-      $('#guide').textContent = `漂亮！你钓到了${f.n}！到鱼市卖掉它就能赚鱼币。`;
-      message(firstTime ? `📖 新图鉴！${f.e} 钓到了${f.n}！` : `${f.e} 钓到了${f.n}！去鱼市卖掉它吧。`)
+      $('#guide').textContent = `漂亮！你钓到了${f.n}（${fmtSize(size)}）！到鱼市卖掉它就能赚鱼币，也可以拿去做料理。`;
+      message(firstTime ? `📖 新图鉴！${f.e} 钓到了${f.n}（${fmtSize(size)}）！` : `${f.e} 钓到了${f.n}（${fmtSize(size)}）！${record?'🏅 新纪录！':'去鱼市卖掉它吧。'}`)
     }
   }
 
@@ -2971,17 +3095,15 @@
     $('#coins').textContent = coins;
     renderBucket();
     renderMarket();
-    if (!questDone && catchCount >= questTarget) {
-      questDone = true;
-      coins += 20;
-      $('#coins').textContent = coins;
-      $('#quest').textContent = '委托完成！奖励 +20 鱼币';
-      $('#questMeter').style.width = '100%'
-    } else if (!questDone) $('#questMeter').style.width = Math.min(100, catchCount / questTarget * 100) + '%'
+    later(renderStats)
   }
 
   function finishCatch() {
     if (state !== 'reel') return;
+    if (boss) {
+      finishBoss();
+      return
+    }
     state = 'idle';
     button.disabled = false;
     button.textContent = '🎣 再抛一次';
@@ -3003,9 +3125,11 @@
     };
     splash(bob.x, 286, 2.1);
     $('#gearInfo').textContent = `${rodNames[rod]}鱼竿 · 蚯蚓鱼饵 ${bait} 个`;
-    awardFish(fish);
+    awardFish(fish, true, perfectHook);
     combo++;
     bestCombo = Math.max(bestCombo, combo);
+    const perfect = perfectHook;
+    if (perfect) stats.perfect++;
     let bonusText = '';
     if (combo >= 3) {
       const bonus = Math.min(30, combo * 2);
@@ -3019,6 +3143,11 @@
     if (combo >= 3) setTimeout(() => sfx('combo'), 380);
     $('#meter').style.width = '100%';
     refreshCatchUI();
+    questProgress('catch');
+    if (fish.rarity === '传说' || fish.rarity === '稀有') questProgress('rare');
+    if (perfect) questProgress('perfect');
+    if (isNight()) questProgress('night');
+    questProgress('combo', combo, true);
     setTimeout(() => {
       if (state === 'idle') {
         $('#progressText').textContent = '等待咬钩';
@@ -3027,8 +3156,13 @@
     }, 1500)
   }
 
-  function escapeFish() {
+  function escapeFish(reason) {
     state = 'idle';
+    const wasBoss = !!bossArmed;
+    if (wasBoss) {
+      bossReady[bossArmed] = t + BOSS_RETRY;
+      endBoss()
+    }
     if (combo >= 3) message(`鱼儿逃走啦，${combo} 连击中断了！`);
     combo = 0;
     perfectHook = false;
@@ -3039,20 +3173,24 @@
     $('#meter').style.width = '0%';
     $('#progressText').textContent = '鱼跑掉了';
     $('#guide').textContent = '哎呀，鱼挣脱了！再抛一次，这回盯紧浮漂。';
-    if (!$('#toast').textContent.includes('连击中断')) message('鱼儿逃走啦，再试一次！')
+    if (wasBoss) message(`👑 ${reason || '鱼王跑掉了'}！${BOSS_RETRY} 秒后可以再挑战。`);
+    else if (!$('#toast').textContent.includes('连击中断')) message('鱼儿逃走啦，再试一次！')
   }
 
   function updateClamUI() {
     clams = Object.values(shellStock).reduce((a, b) => a + b, 0);
     pearls = Object.values(pearlStock).reduce((a, b) => a + b, 0);
+    later(renderClamUI)
+  }
+
+  function renderClamUI() {
     $('#clamCount').textContent = clams;
     $('#pearlCount').textContent = pearls;
     $('#openClam').disabled = clams < 1;
     $('#sellPearls').disabled = pearls < 1;
     $('#digClam').disabled = !clamSpots.some(q => q.ready);
     $('#clamStock').textContent = clamTypes.map(a => `${a.e} ${a.n} ×${shellStock[a.n]||0}`).join('　·　');
-    $('#pearlStock').innerHTML = pearlTypes.filter(a => pearlStock[a.n]).map(a => `<div class="fishrow"><span>${a.e} ${a.n} ×${pearlStock[a.n]}</span><button data-sell-pearl="${a.n}">上架 · ${a.v}币</button></div>`).join('') || '<div class="empty">还没有珍珠</div>';
-    document.querySelectorAll('[data-sell-pearl]').forEach(b => b.onclick = () => sellPearl(b.dataset.sellPearl))
+    setHTML($('#pearlStock'), pearlTypes.filter(a => pearlStock[a.n]).map(a => `<div class="fishrow"><span>${a.e} ${a.n} ×${pearlStock[a.n]}</span><button data-sell-pearl="${a.n}">上架 · ${a.v}币</button></div>`).join('') || '<div class="empty">还没有珍珠</div>')
   }
 
   function digClam() {
@@ -3061,16 +3199,13 @@
       message('沙滩上的蛤蜊都挖完了，过一会儿再来看看。');
       return
     }
-    spot.ready = false;
+    takeClamSpot(spot);
     shellStock[spot.type] = (shellStock[spot.type] || 0) + 1;
     updateClamUI();
     splash(spot.x, spot.y, .55);
     message(`挖到一只${spot.type}！打开它找找珍珠吧。`);
     sfx('splash');
-    setTimeout(() => {
-      spot.ready = true;
-      updateClamUI()
-    }, 12000)
+    questProgress('clam')
   }
 
   function openClam() {
@@ -3083,7 +3218,9 @@
       pearlStock[pearlName] = (pearlStock[pearlName] || 0) + 1;
       splash(350, 410, 1.1);
       message(`✨ ${type.n}里开出了${pearlName}！`);
-      sfx('rare')
+      sfx('rare');
+      stats.pearls++;
+      questProgress('pearl')
     } else message(`${type.n}打开了，里面没有珍珠，再挖一个试试。`);
     updateClamUI()
   }
@@ -3136,14 +3273,17 @@
   }
 
   function renderTank() {
+    later(renderTankNow)
+  }
+
+  function renderTankNow() {
     const stock = selectedAquarium()?.fish || {},
       total = Object.values(stock).reduce((a, b) => a + b, 0);
     $('#tankCount').textContent = selectedAquarium() ? `当前水族馆展缸里有 ${total} 条鱼。` : '先购买水族馆再放入鱼。';
-    $('#tankStock').innerHTML = Object.entries(stock).filter(([, n]) => n > 0).map(([name, n]) => {
-      const f = species.find(x => x.n === name);
+    setHTML($('#tankStock'), Object.entries(stock).filter(([, n]) => n > 0).map(([name, n]) => {
+      const f = fishInfo(name);
       return `<div class="fishrow"><span>${f.e} ${name} ×${n}</span><button data-take-tank="${name}">取回一条</button></div>`
-    }).join('') || '<div class="empty">从“我的鱼”选择鱼放入当前水族馆。</div>';
-    document.querySelectorAll('[data-take-tank]').forEach(b => b.onclick = () => takeFromTank(b.dataset.takeTank))
+    }).join('') || '<div class="empty">从“我的鱼”选择鱼放入当前水族馆。</div>')
   }
 
   function putInTank(name) {
@@ -3205,7 +3345,7 @@
     }
     let idx = 0;
     for (const [name, n] of Object.entries(tankStock)) {
-      const f = species.find(x => x.n === name);
+      const f = fishInfo(name);
       for (let i = 0; i < Math.min(n, 8); i++) {
         const x = 25 + ((idx * 47 + t * (18 + idx % 3 * 4)) % (w - 50)),
           y = 36 + (idx * 23) % 57 + Math.sin(t * 2 + idx) * 6;
@@ -3224,50 +3364,70 @@
   }
 
   function renderMarket() {
-    $('#fishMarket').innerHTML = species.map(f => `<button data-buy-fish="${f.n}">${f.e} ${f.n}<br>🪙 ${Math.max(5,f.v*2)} 币</button>`).join('');
-    $('#sellMarket').innerHTML = Object.entries(inventory).filter(([, num]) => num > 0).map(([n, num]) => {
-      const f = species.find(x => x.n === n);
+    later(renderMarketNow)
+  }
+
+  function renderMarketNow() {
+    setHTML($('#sellMarket'), Object.entries(inventory).filter(([, num]) => num > 0).map(([n, num]) => {
+      const f = fishInfo(n);
       return `<button data-sell-fish="${n}">${f.e} 上架 ${n} ×${num}<br>顾客约付 ${Math.round(f.v*1.25)*num} 币</button>`
-    }).join('') || '<div class="empty">还没有鱼可上架。</div>';
-    $('#businessShops').innerHTML = shops.map(x => `<button data-shop-tag="${x.id}">${x.owned?'✅':'🏪'} ${x.name} · ${x.owned?'已拥有':x.cost+' 币'}</button>`).join('');
+    }).join('') || '<div class="empty">还没有鱼可上架。</div>');
+    setHTML($('#businessShops'), shops.map(x => `<button data-shop-tag="${x.id}">${x.owned?'✅':'🏪'} ${x.name} · ${x.owned?'已拥有':x.cost+' 币'}</button>`).join(''));
     $('#shopStatus').textContent = shops.some(x => x.owned) ? `已拥有：${shops.filter(x=>x.owned).map(x=>x.name).join('、')}。鲜鱼铺待售 ${Object.values(marketStock).reduce((a,b)=>a+b,0)} 条。` : '还没有店铺。进鱼市走近店铺，按 E 买下。';
     {
       const d = !Object.values(inventory).some(n => n > 0);
       $('#sellAll').disabled = d;
       $('#sellAllMarket').disabled = d
     }
-    document.querySelectorAll('[data-buy-fish]').forEach(b => b.onclick = () => {
-      const f = species.find(x => x.n === b.dataset.buyFish),
-        price = Math.max(5, f.v * 2);
-      if (!marketMode || !shops.find(x => x.id === 'fish').owned || Math.hypot(marketPlayer.x - 195, marketPlayer.y - 260) > 115) {
-        message('请到鱼市鲜鱼铺买下店铺，再到柜台购买鱼。');
-        return
-      }
-      if (coins < price) {
-        message(`鱼币不够，${f.n}需要 ${price} 币。`);
-        return
-      }
-      coins -= price;
-      inventory[f.n] = (inventory[f.n] || 0) + 1;
-      $('#coins').textContent = coins;
-      renderBucket();
-      renderMarket();
-      message(`从鱼市买下了${f.n}。`)
-    });
-    document.querySelectorAll('[data-sell-fish]').forEach(b => b.onclick = () => sellFish(b.dataset.sellFish, inventory[b.dataset.sellFish] || 1))
+    renderCooking()
+  }
+
+  function buyFish(name) {
+    const f = fishInfo(name),
+      price = Math.max(5, f.v * 2);
+    if (!marketMode || !shops.find(x => x.id === 'fish').owned || Math.hypot(marketPlayer.x - 195, marketPlayer.y - 260) > 115) {
+      message('请到鱼市鲜鱼铺买下店铺，再到柜台购买鱼。');
+      return
+    }
+    if (coins < price) {
+      message(`鱼币不够，${f.n}需要 ${price} 币。`);
+      return
+    }
+    coins -= price;
+    inventory[f.n] = (inventory[f.n] || 0) + 1;
+    $('#coins').textContent = coins;
+    renderBucket();
+    renderMarket();
+    message(`从鱼市买下了${f.n}。`)
   }
 
   function renderBucket() {
-    $('#bucket').innerHTML = Object.entries(inventory).filter(([, num]) => num > 0).map(([n, num]) => {
-      const f = species.find(x => x.n === n);
-      return `<div class="fishrow"><span>${f.e} ${n} ×${num}</span><button data-tank-fish="${n}">放进水族箱</button></div>`
-    }).join('') || '<div class="empty">还没有鱼，先去钓鱼或到鱼市买几条吧。</div>';
-    document.querySelectorAll('[data-tank-fish]').forEach(b => b.onclick = () => putInTank(b.dataset.tankFish))
+    later(renderBucketNow)
   }
+
+  function renderBucketNow() {
+    setHTML($('#bucket'), Object.entries(inventory).filter(([, num]) => num > 0).map(([n, num]) => {
+      const f = fishInfo(n);
+      return `<div class="fishrow"><span>${f.e} ${n} ×${num}</span><button data-tank-fish="${n}">放进水族箱</button></div>`
+    }).join('') || '<div class="empty">还没有鱼，先去钓鱼或到鱼市买几条吧。</div>')
+  }
+
+  // 动态列表里的按钮统一用事件委托处理
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-buy-fish],[data-sell-fish],[data-tank-fish],[data-take-tank],[data-sell-pearl],[data-cook]');
+    if (!b || b.disabled) return;
+    const d = b.dataset;
+    if (d.buyFish) buyFish(d.buyFish);
+    else if (d.sellFish) sellFish(d.sellFish, inventory[d.sellFish] || 1);
+    else if (d.tankFish) putInTank(d.tankFish);
+    else if (d.takeTank) takeFromTank(d.takeTank);
+    else if (d.sellPearl) sellPearl(d.sellPearl);
+    else if (d.cook) cook(d.cook)
+  });
 
   function sellFish(name, amount) {
     const shop = shops.find(x => x.id === 'fish'),
-      f = species.find(x => x.n === name),
+      f = fishInfo(name),
       owned = inventory[name] || 0,
       n = Math.min(amount, owned);
     if (!f || !n) return;
@@ -3307,8 +3467,11 @@
   button.addEventListener('lostpointercapture', () => hold = false);
   document.addEventListener('keydown', e => {
     if (e.code === 'Space') {
+      if (e.target.closest?.('input,select,textarea')) return;
       e.preventDefault();
-      if (state === 'bite') cast();
+      // 空闲时按空格抛竿；长按触发的自动重复不算，避免钓上来后又立刻抛出去
+      if (state === 'idle' && !e.repeat && !paused && !marketMode && !aquariumMode) cast();
+      else if (state === 'bite') cast();
       if (state === 'reel') hold = true
     }
   });
@@ -3766,15 +3929,20 @@
     }
     spot = sp.id;
     renderSpots();
+    renderBoss();
     message(`来到${sp.e} ${sp.name}！这里有不一样的鱼。`)
   };
 
   // ---------- 图鉴 ----------
   function renderCodex() {
+    later(renderCodexNow)
+  }
+
+  function renderCodexNow() {
     const total = species.length,
       got = species.filter(f => codex[f.n]).length;
     $('#codexCount').textContent = `${got}/${total}`;
-    $('#codex').innerHTML = spots.map(sp => `<h3>${sp.e} ${sp.name}${codexRewards[sp.id]?' · ✅ 已集齐':' · 集齐奖励 '+sp.reward+' 币'}</h3>` + species.filter(f => spotOf(f) === sp.id).map(f => codex[f.n] ? `<div title="${f.rarity}${f.night?' · 夜晚':''} · 钓到 ${codex[f.n]} 次"><b>${f.e}</b>${f.n}<br><small>×${codex[f.n]}</small></div>` : `<div class="unknown" title="${f.rarity}${f.night?' · 只在夜晚出现':''}"><b>${f.e}</b>？？？<br><small>${f.rarity}${f.night?'·🌙':''}</small></div>`).join('')).join('');
+    $('#codex').innerHTML = spots.map(sp => `<h3>${sp.e} ${sp.name}${codexRewards[sp.id]?' · ✅ 已集齐':' · 集齐奖励 '+sp.reward+' 币'}</h3>` + species.filter(f => spotOf(f) === sp.id).map(f => codex[f.n] ? `<div title="${f.rarity}${f.night?' · 夜晚':''} · 钓到 ${codex[f.n]} 次"><b>${f.e}</b>${f.n}<br><small>×${codex[f.n]}${records[f.n]?`<br>📏${fmtSize(records[f.n])}`:''}</small></div>` : `<div class="unknown" title="${f.rarity}${f.night?' · 只在夜晚出现':''}"><b>${f.e}</b>？？？<br><small>${f.rarity}${f.night?'·🌙':''}</small></div>`).join('')).join('');
     renderSpots()
   }
 
@@ -3881,6 +4049,434 @@
     } catch (e) {}
     location.reload()
   };
+  // ---------- 每日委托 ----------
+  const QUESTS = [{
+    id: 'catch',
+    text: n => `亲手钓到 ${n} 条鱼`,
+    need: [5, 8, 12],
+    reward: 40
+  }, {
+    id: 'rare',
+    text: n => `钓到或网到 ${n} 条稀有/传说鱼`,
+    need: [1, 2],
+    reward: 60
+  }, {
+    id: 'perfect',
+    text: n => `完美收竿 ${n} 次`,
+    need: [2, 3, 5],
+    reward: 50
+  }, {
+    id: 'night',
+    text: n => `在夜晚钓到 ${n} 条鱼`,
+    need: [2, 3],
+    reward: 50
+  }, {
+    id: 'combo',
+    text: n => `达成 ${n} 连击`,
+    need: [4, 6],
+    reward: 60
+  }, {
+    id: 'net',
+    text: n => `收网 ${n} 次`,
+    need: [2, 3],
+    reward: 40
+  }, {
+    id: 'clam',
+    text: n => `亲手挖 ${n} 个蛤蜊`,
+    need: [3, 5],
+    reward: 30
+  }, {
+    id: 'pearl',
+    text: n => `开出 ${n} 颗珍珠`,
+    need: [1, 2],
+    reward: 40
+  }, {
+    id: 'cook',
+    text: n => `做 ${n} 道海鲜料理`,
+    need: [1, 2],
+    reward: 45
+  }, {
+    id: 'sell',
+    text: n => `在鱼市卖出 ${n} 件商品`,
+    need: [5, 10],
+    reward: 50,
+    needShop: true
+  }];
+  const QUEST_ALL_BONUS = 100;
+
+  // 同一天生成的委托固定不变（用日期做随机种子）
+  function seeded(str) {
+    let h = 2166136261;
+    for (const ch of str) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+    return () => {
+      h = Math.imul(h ^ (h >>> 15), 2246822507);
+      h = Math.imul(h ^ (h >>> 13), 3266489909);
+      return ((h ^= h >>> 16) >>> 0) / 4294967296
+    }
+  }
+
+  function genQuests(date) {
+    const r = seeded(date),
+      pool = QUESTS.filter(q => !q.needShop || shops.some(s => s.owned)),
+      list = [];
+    while (list.length < 3 && pool.length) {
+      const q = pool.splice(Math.floor(r() * pool.length), 1)[0],
+        i = Math.floor(r() * q.need.length);
+      list.push({
+        id: q.id,
+        need: q.need[i],
+        have: 0,
+        reward: Math.round(q.reward * (1 + i * .5)),
+        done: false
+      })
+    }
+    return list
+  }
+
+  function questText(q) {
+    return QUESTS.find(x => x.id === q.id).text(q.need)
+  }
+
+  // isMax：进度取最大值（例如连击数），否则累加
+  function questProgress(id, n = 1, isMax = false) {
+    let changed = false;
+    for (const q of dailyQuests.list) {
+      if (q.id !== id || q.done) continue;
+      const have = Math.min(q.need, isMax ? Math.max(q.have, n) : q.have + n);
+      if (have === q.have) continue;
+      q.have = have;
+      changed = true;
+      if (q.have >= q.need) {
+        q.done = true;
+        coins += q.reward;
+        stats.quests++;
+        $('#coins').textContent = coins;
+        message(`📋 委托完成：${questText(q)}！奖励 ${q.reward} 鱼币`);
+        sfx('unlock')
+      }
+    }
+    if (!changed) return;
+    if (!dailyQuests.allDone && dailyQuests.list.length && dailyQuests.list.every(q => q.done)) {
+      dailyQuests.allDone = true;
+      coins += QUEST_ALL_BONUS;
+      $('#coins').textContent = coins;
+      message(`📋 今日委托全部完成！额外奖励 ${QUEST_ALL_BONUS} 鱼币`)
+    }
+    later(renderQuests);
+    later(renderStats)
+  }
+
+  function renderQuests() {
+    setHTML($('#questList'), dailyQuests.list.map(q => `<div class="questrow${q.done?' done':''}"><span>${q.done?'✅':'⬜'} ${questText(q)}</span><b>${q.have}/${q.need} · ${q.reward} 币</b></div><div class="meter"><i style="width:${q.have/q.need*100}%"></i></div>`).join('') || '<div class="empty">今天没有委托。</div>');
+    $('#questHint').textContent = dailyQuests.allDone ? '今天的委托全部完成啦，明天会有新委托。' : `每天刷新 3 个委托，全部完成额外奖励 ${QUEST_ALL_BONUS} 鱼币。`
+  }
+
+  // ---------- 海鲜料理 ----------
+  const crustacean = f => ['🦐', '🦞', '🦀'].includes(f.e);
+  const RECIPES = [{
+    id: 'skewer',
+    name: '烤鱼串',
+    e: '🍢',
+    desc: '收线速度 +40%',
+    buffs: ['reel'],
+    secs: 90,
+    needs: [{
+      label: '常见或普通鱼',
+      n: 3,
+      ok: f => f.rarity === '常见' || f.rarity === '普通'
+    }]
+  }, {
+    id: 'soup',
+    name: '鲜虾蟹汤',
+    e: '🍲',
+    desc: '鱼咬钩快 40%',
+    buffs: ['bite'],
+    secs: 90,
+    needs: [{
+      label: '虾或蟹',
+      n: 2,
+      ok: crustacean
+    }]
+  }, {
+    id: 'sashimi',
+    name: '豪华刺身',
+    e: '🍣',
+    desc: '稀有鱼概率 +10%',
+    buffs: ['luck'],
+    secs: 60,
+    needs: [{
+      label: '稀有鱼',
+      n: 1,
+      ok: f => f.rarity === '稀有'
+    }, {
+      label: '少见鱼',
+      n: 2,
+      ok: f => f.rarity === '少见'
+    }]
+  }, {
+    id: 'feast',
+    name: '海鲜盛宴',
+    e: '🥘',
+    desc: '以上三种效果全部生效',
+    buffs: ['reel', 'bite', 'luck'],
+    secs: 120,
+    needs: [{
+      label: '传说鱼',
+      n: 1,
+      ok: f => f.rarity === '传说'
+    }, {
+      label: '任意鱼',
+      n: 4,
+      ok: () => true
+    }]
+  }];
+  const BUFF_NAMES = {
+      reel: '🍢 收线快',
+      bite: '🍲 咬钩快',
+      luck: '🍣 好运'
+    },
+    BUFF_MAX = 300;
+
+  function buffActive(k) {
+    return (buffs[k] || 0) > t
+  }
+
+  // 每项食材挑最便宜的鱼，返回要用掉的鱼名列表；食材不够返回 null
+  function planRecipe(r) {
+    const left = {
+        ...inventory
+      },
+      used = [];
+    for (const need of r.needs) {
+      const cands = Object.keys(left).filter(n => left[n] > 0 && fishInfo(n) && need.ok(fishInfo(n))).sort((a, b) => fishInfo(a).v - fishInfo(b).v);
+      let k = need.n;
+      for (const n of cands)
+        while (k && left[n]) {
+          left[n]--;
+          used.push(n);
+          k--
+        }
+      if (k) return null
+    }
+    return used
+  }
+
+  function cook(id) {
+    const r = RECIPES.find(x => x.id === id);
+    if (!r) return;
+    const used = planRecipe(r);
+    if (!used) {
+      message(`做${r.name}需要：${r.needs.map(x => `${x.label} ×${x.n}`).join('、')}。`);
+      return
+    }
+    for (const n of used) {
+      inventory[n]--;
+      if (!inventory[n]) delete inventory[n]
+    }
+    for (const b of r.buffs) buffs[b] = Math.min(t + BUFF_MAX, Math.max(buffs[b] || 0, t) + r.secs);
+    stats.cooked++;
+    sfx('unlock');
+    message(`${r.e} 做好了${r.name}，吃完${r.desc}，持续 ${r.secs} 秒！`);
+    renderBucket();
+    renderMarket();
+    renderBuffs();
+    questProgress('cook');
+    later(renderStats)
+  }
+
+  function renderCooking() {
+    setHTML($('#recipes'), RECIPES.map(r => {
+      const ok = !!planRecipe(r);
+      return `<button type="button" data-cook="${r.id}"${ok?'':' disabled'}>${r.e} ${r.name} · ${r.desc}（${r.secs} 秒）<br><small>${r.needs.map(x => `${x.label} ×${x.n}`).join(' + ')}</small></button>`
+    }).join(''))
+  }
+
+  function renderBuffs() {
+    const on = Object.keys(BUFF_NAMES).filter(buffActive),
+      text = on.map(k => `${BUFF_NAMES[k]} ${Math.ceil(buffs[k] - t)}秒`).join(' · ');
+    $('#buffPill').hidden = !on.length;
+    $('#buffPill').textContent = text;
+    $('#buffStatus').textContent = on.length ? `生效中：${text}` : '还没有吃料理。做好就会马上吃掉，同类效果时间可以叠加（最多 5 分钟）。'
+  }
+
+  // ---------- 鱼王挑战 ----------
+  const BOSSES = {
+      bay: {
+        n: '巨石斑王',
+        e: '🐠',
+        cm: 280,
+        v: 400,
+        rod: 2
+      },
+      river: {
+        n: '江心巨鲶',
+        e: '🐟',
+        cm: 360,
+        v: 800,
+        rod: 3
+      },
+      deep: {
+        n: '深渊巨齿鲨',
+        e: '🦈',
+        cm: 1600,
+        v: 1600,
+        rod: 4
+      }
+    },
+    BOSS_COOLDOWN = 360,
+    BOSS_RETRY = 45;
+
+  function bossBlocker() {
+    const B = BOSSES[spot];
+    if (rod < B.rod) return `需要${rodNames[B.rod]}鱼竿或更好的鱼竿`;
+    if (t < (bossReady[spot] || 0)) return `鱼王在休息，约 ${Math.ceil(bossReady[spot]-t)} 秒后回来`;
+    if (marketMode || aquariumMode) return '回到海边才能挑战';
+    if (state !== 'idle') return '先收竿再挑战';
+    return ''
+  }
+
+  function startBoss() {
+    if (paused) return;
+    const why = bossBlocker();
+    if (why) {
+      message(`👑 ${why}。`);
+      return
+    }
+    bossArmed = spot;
+    cast();
+    message(`👑 ${BOSSES[spot].n}在浮漂附近游弋……咬钩后它会拼命挣扎，⚠️ 时一定要松手！`);
+    renderBoss()
+  }
+
+  function startBossFight() {
+    boss = {
+      id: bossArmed,
+      tension: 0,
+      thrashUntil: 0,
+      nextThrash: t + 1.5 + Math.random()
+    };
+    progress = 12 + rod * 3 + (perfectHook ? 10 : 0);
+    $('#tensionWrap').hidden = false;
+    message('👑 鱼王上钩了！按住收线，它挣扎（⚠️）时松手，张力满了鱼线会断！')
+  }
+
+  function updateBossReel(dt) {
+    if (t >= boss.nextThrash) {
+      boss.thrashUntil = t + 1.1 + Math.random() * .8;
+      boss.nextThrash = boss.thrashUntil + 1.6 + Math.random() * 2;
+      splash(bob.x, 285, 1.6);
+      sfx('splash')
+    }
+    const thrash = t < boss.thrashUntil;
+    if (hold) {
+      if (!thrash) progress += (31 + rod * 8) * dt * (buffActive('reel') ? 1.4 : 1) * .4;
+      boss.tension += (thrash ? 80 : 6) * dt;
+      sfx('reel', .09)
+    } else {
+      boss.tension -= 35 * dt;
+      progress -= (thrash ? 9 : 4) * dt
+    }
+    boss.tension = Math.max(0, Math.min(100, boss.tension));
+    progress = Math.max(0, Math.min(100, progress));
+    $('#meter').style.width = progress + '%';
+    $('#tensionMeter').style.width = boss.tension + '%';
+    $('#progressText').textContent = thrash ? '⚠️ 鱼王在挣扎，快松手！' : `按住收线 · 张力 ${Math.round(boss.tension)}%`;
+    button.textContent = thrash ? '⚠️ 松手！' : '🪝 收线（按住）';
+    if (boss.tension >= 100) escapeFish('💥 鱼线绷断了！鱼王逃走了');
+    else if (progress >= 100) finishCatch();
+    else if (progress <= 0 && t - biteAt > 6) escapeFish('鱼王挣脱了')
+  }
+
+  function endBoss() {
+    boss = null;
+    bossArmed = '';
+    $('#tensionWrap').hidden = true;
+    $('#tensionMeter').style.width = '0%';
+    renderBoss()
+  }
+
+  function finishBoss() {
+    const id = boss.id,
+      B = BOSSES[id],
+      first = !bossWins[id],
+      size = rollSize(B, perfectHook),
+      key = 'boss:' + id,
+      record = size > (records[key] || 0),
+      reward = B.v * (first ? 2 : 1);
+    if (record) records[key] = size;
+    bossWins[id] = (bossWins[id] || 0) + 1;
+    stats.bossWins++;
+    bossReady[id] = t + BOSS_COOLDOWN;
+    coins += reward;
+    if (derbyActive) {
+      derbyScore += 100;
+      updateDerbyUI()
+    }
+    state = 'idle';
+    perfectHook = false;
+    button.disabled = false;
+    button.textContent = '🎣 再抛一次';
+    jump = {
+      start: t,
+      emoji: B.e,
+      big: true
+    };
+    splash(bob.x, 286, 3);
+    $('#coins').textContent = coins;
+    $('#meter').style.width = '100%';
+    $('#progressText').textContent = '👑 征服鱼王！';
+    $('#guide').textContent = `你钓到了${B.n}，足足 ${fmtSize(size)}！`;
+    message(`👑 征服${B.n}（${fmtSize(size)}）！${first?'首次击败双倍奖励，':''}获得 ${reward} 鱼币！${record&&!first?' 🏅 新纪录！':''}`);
+    sfx('rare');
+    setTimeout(() => sfx('combo'), 380);
+    endBoss();
+    later(renderStats);
+    setTimeout(() => {
+      if (state === 'idle') {
+        $('#progressText').textContent = '等待咬钩';
+        $('#meter').style.width = '0%'
+      }
+    }, 1500)
+  }
+
+  function renderBoss() {
+    const B = BOSSES[spot],
+      why = bossBlocker(),
+      wins = bossWins[spot] || 0,
+      fighting = bossArmed === spot;
+    $('#bossText').textContent = `${spots.find(x => x.id === spot).name}的鱼王：${B.e} ${B.n}（约 ${fmtSize(B.cm)}）· 需要${rodNames[B.rod]}鱼竿 · 奖励 ${B.v} 币${wins?'':'（首次双倍）'}`;
+    $('#bossButton').disabled = !!why || fighting;
+    $('#bossButton').textContent = fighting ? '👑 鱼王挑战中…' : why ? `🔒 ${why}` : `👑 挑战${B.n}`;
+    $('#bossRecord').textContent = Object.keys(BOSSES).map(id => `${BOSSES[id].e} ${BOSSES[id].n} ×${bossWins[id]||0}${records['boss:'+id]?`（最大 ${fmtSize(records['boss:'+id])}）`:''}`).join('　·　')
+  }
+
+  // ---------- 统计 ----------
+  function renderStats() {
+    let big = null;
+    for (const [n, cm] of Object.entries(records)) {
+      const f = n.startsWith('boss:') ? BOSSES[n.slice(5)] : fishInfo(n);
+      if (f && (!big || cm > big.cm)) big = {
+        f,
+        cm
+      }
+    }
+    const rows = [
+      ['🐟 总渔获', `${catchCount} 条`],
+      ['🔥 最高连击', bestCombo],
+      ['✨ 完美收竿', `${stats.perfect} 次`],
+      ['💎 开出珍珠', `${stats.pearls} 颗`],
+      ['🪙 鱼市卖出', `${stats.sold} 件`],
+      ['📋 完成委托', `${stats.quests} 个`],
+      ['🍳 做过料理', `${stats.cooked} 道`],
+      ['👑 征服鱼王', `${stats.bossWins} 次`],
+      ['📏 最大的鱼', big ? `${big.f.e} ${big.f.n} ${fmtSize(big.cm)}` : '—'],
+      ['📅 游戏天数', `第 ${Math.floor(t / 120) + 1} 天`]
+    ];
+    setHTML($('#stats'), rows.map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join(''))
+  }
+
+  $('#bossButton').onclick = startBoss;
+
   // ---------- 存档 (localStorage) ----------
   const SAVE_KEY = 'bay-fishing-day-save-v1';
 
@@ -3890,11 +4486,13 @@
       t, catchCount, coins, aquariums, selectedAqId, nextAqId,
       autoFisher, autoSeller, autoClamWorker, autoFishAt, autoSellAt, autoClamAt,
       nextPayrollAt, payrollDue, inventory, tankStock, rod, bait, netLevel,
-      questDone, questTarget, shellStock, pearlStock, marketStock, pearlMarketStock,
+      shellStock, pearlStock, marketStock, pearlMarketStock,
       achievements, treasureAt, nextTide,
       owned: shops.filter(x => x.owned).map(x => x.id),
       clamReady: clamSpots.map(q => q.ready),
-      codex, codexRewards, lure, lureStock, bestCombo, spot, unlockedSpots, lastDaily, dailyStreak
+      clamReadyAt: clamSpots.map(q => q.readyAt || 0),
+      codex, codexRewards, lure, lureStock, bestCombo, spot, unlockedSpots, lastDaily, dailyStreak,
+      records, dailyQuests, stats, buffs, bossReady, bossWins
     }
   }
 
@@ -3936,8 +4534,6 @@
     rod = Math.min(Math.max(0, num(d.rod, 0)), rodNames.length - 1);
     bait = num(d.bait, 0);
     netLevel = Math.min(Math.max(0, num(d.netLevel, 0)), 4);
-    questDone = !!d.questDone;
-    questTarget = num(d.questTarget, 3);
     shellStock = obj(d.shellStock);
     pearlStock = obj(d.pearlStock);
     marketStock = obj(d.marketStock);
@@ -3947,6 +4543,8 @@
     nextTide = num(d.nextTide, t + 40);
     shops.forEach(x => x.owned = Array.isArray(d.owned) && d.owned.includes(x.id));
     if (Array.isArray(d.clamReady)) clamSpots.forEach((q, i) => q.ready = d.clamReady[i] !== false);
+    // 旧存档没有 readyAt，没长好的蛤蜊 12 秒后重新长出
+    clamSpots.forEach((q, i) => q.readyAt = q.ready ? 0 : Math.min(num(Array.isArray(d.clamReadyAt) ? d.clamReadyAt[i] : undefined, t + 12), t + 12));
     aquariums.forEach(a => {
       a.decor = Math.min(3, Math.max(0, num(a.decor, 0)));
       a.big = Math.max(0, num(a.big, 0));
@@ -3968,6 +4566,26 @@
     spot = spots.some(x => x.id === d.spot) && unlockedSpots[d.spot] ? d.spot : 'bay';
     lastDaily = typeof d.lastDaily === 'string' ? d.lastDaily : '';
     dailyStreak = num(d.dailyStreak, 0);
+    const nums = o => Object.fromEntries(Object.entries(obj(o)).filter(([, v]) => Number.isFinite(v)));
+    records = nums(d.records);
+    buffs = nums(d.buffs);
+    bossReady = nums(d.bossReady);
+    bossWins = nums(d.bossWins);
+    stats = Object.assign(stats, nums(d.stats));
+    {
+      const dq = obj(d.dailyQuests);
+      dailyQuests = {
+        date: typeof dq.date === 'string' ? dq.date : '',
+        list: (Array.isArray(dq.list) ? dq.list : []).filter(q => q && QUESTS.some(x => x.id === q.id) && Number.isFinite(q.need) && Number.isFinite(q.have) && Number.isFinite(q.reward)).map(q => ({
+          id: q.id,
+          need: q.need,
+          have: q.have,
+          reward: q.reward,
+          done: !!q.done
+        })),
+        allDone: !!dq.allDone
+      }
+    }
 
     // 同步界面文字
     const netNames = ['普通', '加固', '宽幅', '深海', '巨型'],
@@ -3983,10 +4601,6 @@
       $('#netShop').disabled = true
     } else $('#netShop').textContent = `🪢 升级${netNames[netLevel+1]}渔网 · ${netCosts[netLevel]} 币`;
     refreshCatchUI();
-    if (questDone) {
-      $('#quest').textContent = '委托完成！奖励 +20 鱼币';
-      $('#questMeter').style.width = '100%'
-    }
     $('#coins').textContent = coins;
     return true
   }
@@ -4055,6 +4669,14 @@
       sfx('coin');
       saveGame()
     }
+    if (dailyQuests.date !== today) {
+      dailyQuests = {
+        date: today,
+        list: genQuests(today),
+        allDone: false
+      };
+      later(renderQuests)
+    }
     $('#dailyText').textContent = `已连续登录 ${dailyStreak} 天 · 今日奖励已领取。明天再来可得 ${50*Math.min(dailyStreak+1,7)} 鱼币（最多每天 350）。`
   }
 
@@ -4076,11 +4698,16 @@
     }
   });
 
+  $('#fishMarket').innerHTML = species.map(f => `<button data-buy-fish="${f.n}">${f.e} ${f.n}<br>🪙 ${Math.max(5,f.v*2)} 币</button>`).join('');
   renderMarket();
   renderTank();
   updateClamUI();
   updateAquariumUI();
   updateDerbyUI();
+  renderQuests();
+  renderBuffs();
+  renderBoss();
+  renderStats();
   $('#coins').textContent = coins;
   requestAnimationFrame(draw)
 })();

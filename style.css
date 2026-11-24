@@ -656,3 +656,55 @@ body{
   height:18px;
   accent-color:#317761
 }
+.pill[hidden],.meter[hidden]{
+  display:none
+}
+.meter.tension i{
+  background:linear-gradient(90deg,#f2c14e,#e0533d);
+  transition:none
+}
+.quests .questrow{
+  display:flex;
+  justify-content:space-between;
+  gap:8px;
+  font-size:13px;
+  color:var(--ink);
+  margin-top:9px
+}
+.quests .questrow b{
+  white-space:nowrap;
+  font-size:12px;
+  color:#698079
+}
+.quests .questrow.done{
+  color:#6f9a6a
+}
+.quests .meter{
+  height:7px;
+  margin-top:4px
+}
+.statgrid{
+  display:grid;
+  gap:5px;
+  font-size:13px
+}
+.statgrid div{
+  display:flex;
+  justify-content:space-between;
+  gap:8px;
+  background:#f3f5e8;
+  border-radius:8px;
+  padding:6px 9px;
+  color:var(--ink)
+}
+.statgrid b{
+  text-align:right
+}
+#recipes button:disabled{
+  opacity:.5;
+  cursor:default
+}
+#recipes small{
+  font-weight:600;
+  color:#698079
+}
